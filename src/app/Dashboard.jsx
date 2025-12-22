@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, LineChart, Line } from 'recharts';
 
@@ -645,7 +643,7 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
       </div>
 
       {/* Kaart en verdeling */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
         
         {/* Kaart met fysio locaties */}
         <Card>
@@ -855,7 +853,7 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
       {/* Inzichten */}
       <Card>
         <CardTitle>Wat kunnen we hieruit opmaken?</CardTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
           
           <div style={{ padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
@@ -1086,32 +1084,83 @@ export default function ValrisicoDashboard() {
     <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: KLEUREN.tekst }}>
       
       {/* HEADER */}
-      <header style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '16px 32px', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', backgroundColor: KLEUREN.primair, display: 'flex', alignItems: 'center', justifyContent: 'center', color: KLEUREN.wit, fontSize: '18px' }}>🛡️</div>
+      <header style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '12px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: KLEUREN.primair, display: 'flex', alignItems: 'center', justifyContent: 'center', color: KLEUREN.wit, fontSize: '16px', flexShrink: 0 }}>🛡️</div>
             <div>
-              <h1 style={{ margin: 0, fontSize: '17px', fontWeight: 700 }}>Valrisico Dashboard</h1>
-              <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
+              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>Valrisico Dashboard</h1>
+              <p style={{ margin: 0, fontSize: '11px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
             </div>
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
-              style={{ padding: '8px 32px 8px 12px', borderRadius: '8px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '13px', color: KLEUREN.tekst, cursor: 'pointer', minWidth: '200px' }}>
+              style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '12px', color: KLEUREN.tekst, cursor: 'pointer' }}>
               <option value="alle">Alle wijken</option>
               {WIJKEN.map(w => <option key={w.code} value={w.code}>{w.naam}</option>)}
             </select>
-            <span style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>
-              {filters.jaren.length === 1 ? filters.jaren[0] : `${Math.min(...filters.jaren)}-${Math.max(...filters.jaren)}`}
-            </span>
           </div>
         </div>
       </header>
 
+      {/* ACTIEVE FILTERS BALK */}
+      <div style={{ backgroundColor: KLEUREN.primairLicht, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '10px 16px' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: KLEUREN.primair }}>Actieve filters:</span>
+          
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Wijk */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}` }}>
+              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Wijk:</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: KLEUREN.tekst }}>
+                {wijk === 'alle' ? 'Alle wijken' : WIJKEN.find(w => w.code === wijk)?.naam}
+              </span>
+            </div>
+            
+            {/* Jaren */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.jaren.length === JAREN.length ? KLEUREN.rand : KLEUREN.matig}` }}>
+              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Jaar:</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.jaren.length === JAREN.length ? KLEUREN.tekst : KLEUREN.matig }}>
+                {filters.jaren.length === JAREN.length ? 'Alle' : filters.jaren.length === 1 ? filters.jaren[0] : filters.jaren.sort().join(', ')}
+              </span>
+            </div>
+            
+            {/* Maanden */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.maanden.length === 12 ? KLEUREN.rand : KLEUREN.matig}` }}>
+              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Maanden:</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.maanden.length === 12 ? KLEUREN.tekst : KLEUREN.matig }}>
+                {filters.maanden.length === 12 ? 'Alle' : filters.maanden.length === 0 ? 'Geen' : `${filters.maanden.length} van 12`}
+              </span>
+            </div>
+            
+            {/* Leeftijd */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.leeftijden.length === 3 ? KLEUREN.rand : KLEUREN.matig}` }}>
+              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Leeftijd:</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.leeftijden.length === 3 ? KLEUREN.tekst : KLEUREN.matig }}>
+                {filters.leeftijden.length === 3 ? 'Alle' : filters.leeftijden.join(', ')}
+              </span>
+            </div>
+            
+            {/* Geslacht */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.geslachten.length === 2 ? KLEUREN.rand : KLEUREN.matig}` }}>
+              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Geslacht:</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.geslachten.length === 2 ? KLEUREN.tekst : KLEUREN.matig }}>
+                {filters.geslachten.length === 2 ? 'M + V' : filters.geslachten[0]}
+              </span>
+            </div>
+          </div>
+          
+          {/* Resultaat teller */}
+          <div style={{ marginLeft: 'auto', fontSize: '12px', color: KLEUREN.tekstSub }}>
+            <strong style={{ color: KLEUREN.primair }}>{stats.tests.toLocaleString()}</strong> tests van <strong>{stats.inw65plus.toLocaleString()}</strong> inwoners 65+
+          </div>
+        </div>
+      </div>
+
       {/* NAVIGATIE */}
-      <nav style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}` }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', paddingLeft: '32px', paddingRight: '32px' }}>
+      <nav style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, overflowX: 'auto' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', paddingLeft: '16px', paddingRight: '16px', minWidth: 'max-content' }}>
           {[
             { id: 'overzicht', label: '📊 Overzicht' },
             { id: 'risico', label: '⚠️ Risicofactoren' },
@@ -1127,23 +1176,23 @@ export default function ValrisicoDashboard() {
       </nav>
 
       {/* CONTENT */}
-      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px 32px' }}>
+      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '16px' }}>
         
         {/* FILTERS */}
-        <div style={{ marginBottom: '24px' }}>
+        <div style={{ marginBottom: '20px' }}>
           <FilterPanel filters={filters} setFilters={setFilters} />
         </div>
 
         {/* === OVERZICHT === */}
         {tab === 'overzicht' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <InfoPanel type="info">
               <strong>Over dit dashboard:</strong> De Valrisicotest van VeiligheidNL is afgenomen bij inwoners van 65+ in Oude IJsselstreek. 
               In de geselecteerde wijk(en) wonen <strong>{stats.inw65plus.toLocaleString()}</strong> inwoners van 65 jaar en ouder, 
               waarvan <strong>{stats.tests.toLocaleString()}</strong> de test hebben gedaan ({stats.bereik}% bereik).
             </InfoPanel>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
               <StatCard label="Inwoners 65+" value={stats.inw65plus.toLocaleString()} sub="In geselecteerde wijk(en)" icon="👥" />
               <StatCard label="Tests afgenomen" value={stats.tests.toLocaleString()} sub={`${stats.bereik}% bereik`} icon="📋" />
               <StatCard label="Laag risico" value={stats.pLaag} unit="%" sub={`${stats.laag} personen`} color={KLEUREN.laag} icon="✓" />
@@ -1152,7 +1201,7 @@ export default function ValrisicoDashboard() {
               <StatCard label="Verhoogd risico" value={stats.matig + stats.hoog} sub="Matig + Hoog" color={KLEUREN.primair} icon="🎯" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
               <Card>
                 <CardTitle sub="Gefilterde selectie">Verdeling risiconiveau</CardTitle>
                 <ResponsiveContainer width="100%" height={220}>
@@ -1210,7 +1259,7 @@ export default function ValrisicoDashboard() {
 
             <Card>
               <CardTitle>Belangrijkste bevindingen</CardTitle>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
                 <InfoPanel type="danger">
                   <strong>{stats.pHoog}% heeft hoog valrisico</strong><br />
                   Dit zijn {stats.hoog} personen die baat hebben bij intensieve begeleiding.
@@ -1251,7 +1300,7 @@ export default function ValrisicoDashboard() {
               Bij elke vraag staat <em>n=X%</em> om aan te geven welk deel van de respondenten deze vraag kreeg.
             </InfoPanel>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
               <Card>
                 <CardTitle sub="Percentage van respondenten die de vraag beantwoordden">Prevalentie per risicofactor</CardTitle>
                 {RISICOFACTOREN.map(f => (
@@ -1331,7 +1380,7 @@ export default function ValrisicoDashboard() {
               <strong>Preventief gedrag:</strong> De test meet 6 vormen van preventief gedrag. Doel: minimaal 80% past elke maatregel toe.
             </InfoPanel>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
               <Card>
                 <CardTitle sub="Percentage dat de maatregel toepast">Huidige stand</CardTitle>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1376,7 +1425,7 @@ export default function ValrisicoDashboard() {
 
             <Card>
               <CardTitle>Risicoverdeling per leeftijd</CardTitle>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={demografieData.perLeeftijd}>
                     <CartesianGrid strokeDasharray="3 3" stroke={KLEUREN.rand} />
@@ -1409,7 +1458,7 @@ export default function ValrisicoDashboard() {
 
             <Card>
               <CardTitle>Verschillen man/vrouw</CardTitle>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
                 {demografieData.perGeslacht.map((g, i) => (
                   <div key={i} style={{ padding: '20px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -1465,7 +1514,7 @@ export default function ValrisicoDashboard() {
                       </div>
                       <button onClick={() => setKern(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: KLEUREN.tekstSub }}>×</button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
                       {[
                         { l: '65+ inwoners', v: k.inw65plus?.toLocaleString() },
                         { l: 'Tests', v: k.tests },
@@ -1540,7 +1589,7 @@ export default function ValrisicoDashboard() {
               <strong>Van data naar actie:</strong> Aanbevelingen geprioriteerd op impact en haalbaarheid.
             </InfoPanel>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
               <Card>
                 <CardTitle sub="Hoogste verwachte impact">Top 3 interventies</CardTitle>
                 {[
@@ -1599,8 +1648,8 @@ export default function ValrisicoDashboard() {
       </main>
 
       {/* FOOTER */}
-      <footer style={{ backgroundColor: KLEUREN.wit, borderTop: `1px solid ${KLEUREN.rand}`, padding: '16px 32px', marginTop: '24px' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: KLEUREN.tekstSub }}>
+      <footer style={{ backgroundColor: KLEUREN.wit, borderTop: `1px solid ${KLEUREN.rand}`, padding: '12px 16px', marginTop: '20px' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: KLEUREN.tekstSub, flexWrap: 'wrap', gap: '8px' }}>
           <span>Valrisico Dashboard • Gemeente Oude IJsselstreek • VeiligheidNL</span>
           <span>Data is geanonimiseerd • 2024</span>
         </div>
@@ -1608,5 +1657,3 @@ export default function ValrisicoDashboard() {
     </div>
   );
 }
-
-
