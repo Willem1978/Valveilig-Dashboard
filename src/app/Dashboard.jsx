@@ -65,6 +65,9 @@ const MAANDEN = [
 
 const JAREN = [2023, 2024, 2025];
 
+// Minimum aantal tests voor data weergave (privacy/betrouwbaarheid)
+const MIN_TESTS_VOOR_WEERGAVE = 10;
+
 // =============================================================================
 // DATA
 // =============================================================================
@@ -176,16 +179,38 @@ const FYSIO_DATA = [
 const genereerFysioAanmeldingen = () => {
   const aanmeldingen = [];
   
+  // Bereken totaal verwacht hoog risico per jaar (gebaseerd op testdata patronen)
+  // Totaal hoog risico over alle jaren is ~35% van ~1847 tests = ~646 personen
+  // Per jaar: 2023: ~180, 2024: ~280, 2025: ~186
+  const hoogRisicoPerJaar = { 2023: 180, 2024: 280, 2025: 186 };
+  const doelConversie = 0.40; // 40% van hoog risico meldt zich aan
+  
   JAREN.forEach(jaar => {
-    const jaarFactor = jaar === 2023 ? 0.7 : jaar === 2024 ? 1.0 : 0.95;
+    const jaarHoogRisico = hoogRisicoPerJaar[jaar] || 200;
+    const jaarAanmeldingen = Math.round(jaarHoogRisico * doelConversie);
     
-    MAANDEN.forEach(maand => {
-      if (jaar === 2025 && maand.id > 12) return;
+    // Verdeel over maanden (seizoenspatroon)
+    const maandFactoren = MAANDEN.map(m => {
+      if ([9, 10, 11].includes(m.id)) return 1.4; // Herfst: hogere participatie
+      if ([7, 8].includes(m.id)) return 0.6; // Zomer: lagere participatie
+      if ([12, 1, 2].includes(m.id)) return 0.9; // Winter: iets lager
+      return 1.0;
+    });
+    const totaalFactor = maandFactoren.reduce((s, f) => s + f, 0);
+    
+    MAANDEN.forEach((maand, idx) => {
+      if (jaar === 2025 && maand.id > 11) return; // Tot en met november 2025
+      
+      const maandAandeel = maandFactoren[idx] / totaalFactor;
+      const maandTotaal = Math.round(jaarAanmeldingen * maandAandeel);
+      
+      // Verdeel over fysio's: A=45%, B=32%, C=23%
+      const fysioVerdeling = { fysioA: 0.45, fysioB: 0.32, fysioC: 0.23 };
       
       FYSIO_DATA.forEach(fysio => {
-        const basisAantal = fysio.id === 'fysioA' ? 14 : fysio.id === 'fysioB' ? 9 : 7;
-        const seizoenFactor = [9, 10, 11].includes(maand.id) ? 1.3 : [7, 8].includes(maand.id) ? 0.7 : 1;
-        const aantal = Math.max(0, Math.floor(basisAantal * jaarFactor * seizoenFactor * (0.8 + Math.random() * 0.4)));
+        const basisAantal = Math.round(maandTotaal * fysioVerdeling[fysio.id]);
+        // Kleine random variatie (-1 tot +1)
+        const aantal = Math.max(0, basisAantal + Math.floor(Math.random() * 3) - 1);
         
         aanmeldingen.push({
           fysio: fysio.id,
@@ -346,6 +371,17 @@ const InfoPanel = ({ type = 'info', children }) => {
     </div>
   );
 };
+
+// Helper voor privacy-gevoelige data - toont alleen bij voldoende tests
+const PrivacyValue = ({ tests, value, suffix = '%', placeholder = '-' }) => {
+  if (tests < MIN_TESTS_VOOR_WEERGAVE) {
+    return <span title={`Onvoldoende data (min. ${MIN_TESTS_VOOR_WEERGAVE} tests)`} style={{ color: KLEUREN.tekstLicht }}>{placeholder}</span>;
+  }
+  return <>{value}{suffix}</>;
+};
+
+// Check of data getoond mag worden
+const magDataTonen = (tests) => tests >= MIN_TESTS_VOOR_WEERGAVE;
 
 const StatCard = ({ label, value, unit, sub, color, icon }) => (
   <Card>
@@ -608,13 +644,15 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
     return { perFysio, totaalAanmeldingen };
   }, [gefilterdAanmeldingen]);
   
-  // Aanmeldingspercentage
-  const aanmeldingsPercentage = totaalHoogRisico > 0 ? Math.round((totalen.totaalAanmeldingen / totaalHoogRisico) * 100) : 0;
-  const nietAangemeld = totaalHoogRisico - totalen.totaalAanmeldingen;
+  // Aanmeldingspercentage: percentage van hoog risico dat zich heeft aangemeld
+  // Dit kan nooit hoger zijn dan 100% (je kan niet meer aanmelden dan er hoog risico zijn)
+  const aanmeldingsPercentage = totaalHoogRisico > 0 ? Math.min(100, Math.round((totalen.totaalAanmeldingen / totaalHoogRisico) * 100)) : 0;
+  const doelPercentage = 40; // Doel is 40% conversie
+  const voortgangNaarDoel = doelPercentage > 0 ? Math.min(100, Math.round((aanmeldingsPercentage / doelPercentage) * 100)) : 0;
+  const nogTeBereiken = Math.max(0, Math.round(totaalHoogRisico * (doelPercentage / 100)) - totalen.totaalAanmeldingen);
   
-  // Trend data voor grafiek - per jaar/maand combinatie
+  // Trend data voor grafiek
   const trendData = useMemo(() => {
-    // Als meerdere jaren, toon per jaar
     if (filters.jaren.length > 1) {
       return filters.jaren.map(jaar => {
         const jaarData = gefilterdAanmeldingen.filter(a => a.jaar === jaar);
@@ -627,8 +665,6 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
         };
       });
     }
-    
-    // Anders toon per maand
     return MAANDEN.map(m => {
       const maandData = gefilterdAanmeldingen.filter(a => a.maand === m.id);
       return {
@@ -652,11 +688,11 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
       {/* Hoofdstatistieken */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
         <StatCard 
-          label="Totaal hoog risico" 
+          label="Hoog risico in selectie" 
           value={totaalHoogRisico} 
-          sub="Personen in selectie" 
+          sub="Potentiële doelgroep" 
           color={KLEUREN.hoog} 
           icon="⚠️" 
         />
@@ -668,45 +704,102 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
           icon="🏥" 
         />
         <StatCard 
-          label="Niet aangemeld" 
-          value={nietAangemeld > 0 ? nietAangemeld : 0} 
-          sub={`${100 - aanmeldingsPercentage}% nog te bereiken`}
-          color={KLEUREN.matig} 
-          icon="📋" 
-        />
-        <StatCard 
-          label="Aanmeldingsgraad" 
+          label="Conversiepercentage" 
           value={aanmeldingsPercentage} 
           unit="%" 
-          sub="Conversie hoog risico"
-          color={aanmeldingsPercentage >= 50 ? KLEUREN.laag : aanmeldingsPercentage >= 30 ? KLEUREN.matig : KLEUREN.hoog} 
+          sub={`Doel: ${doelPercentage}% | Nog ${nogTeBereiken} te bereiken`}
+          color={aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : aanmeldingsPercentage >= 25 ? KLEUREN.matig : KLEUREN.hoog} 
           icon="📈" 
+        />
+        <StatCard 
+          label="Voortgang naar doel" 
+          value={voortgangNaarDoel} 
+          unit="%" 
+          sub={voortgangNaarDoel >= 100 ? "Doel behaald! 🎉" : `${100 - voortgangNaarDoel}% te gaan`}
+          color={voortgangNaarDoel >= 100 ? KLEUREN.laag : voortgangNaarDoel >= 70 ? KLEUREN.matig : KLEUREN.hoog} 
+          icon="🎯" 
         />
       </div>
 
-      {/* Kaart en verdeling */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+      {/* Praktijken, Kaart en Pie chart */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
         
+        {/* Praktijken kaarten */}
+        <Card>
+          <CardTitle sub="Klik voor details">Fysiotherapie praktijken</CardTitle>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {marktaandeel.map((fysio, idx) => {
+              const isSelected = selectedFysio === fysio.id;
+              const kern = KERNEN.find(k => k.id === fysio.kern);
+              return (
+                <div 
+                  key={fysio.id}
+                  onClick={() => setSelectedFysio(isSelected ? null : fysio.id)}
+                  style={{ 
+                    padding: '16px',
+                    borderRadius: '12px',
+                    backgroundColor: isSelected ? `${fysio.kleur}15` : KLEUREN.achtergrond,
+                    border: `2px solid ${isSelected ? fysio.kleur : 'transparent'}`,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{ 
+                        width: '50px', height: '50px', borderRadius: '12px',
+                        backgroundColor: fysio.kleur, color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '22px',
+                      }}>
+                        🏥
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: KLEUREN.tekst }}>{fysio.naam}</h4>
+                        <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: KLEUREN.tekstSub }}>📍 {fysio.locatie}</p>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '32px', fontWeight: 700, color: fysio.kleur, lineHeight: 1 }}>{fysio.aantal}</div>
+                      <div style={{ fontSize: '12px', color: KLEUREN.tekstSub, marginTop: '2px' }}>aanmeldingen</div>
+                    </div>
+                  </div>
+                  
+                  {/* Progress bar voor marktaandeel */}
+                  <div style={{ marginTop: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '6px' }}>
+                      <span style={{ color: KLEUREN.tekstSub }}>Marktaandeel</span>
+                      <span style={{ fontWeight: 700, color: fysio.kleur }}>{fysio.percentage}%</span>
+                    </div>
+                    <div style={{ height: '10px', backgroundColor: KLEUREN.rand, borderRadius: '5px', overflow: 'hidden' }}>
+                      <div style={{ width: `${fysio.percentage}%`, height: '100%', backgroundColor: fysio.kleur, borderRadius: '5px', transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* Totaal balk */}
+          <div style={{ 
+            marginTop: '16px', padding: '14px 18px', 
+            backgroundColor: KLEUREN.primairLicht, borderRadius: '10px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <span style={{ fontSize: '14px', fontWeight: 600, color: KLEUREN.primair }}>Totaal aanmeldingen</span>
+            <span style={{ fontSize: '24px', fontWeight: 700, color: KLEUREN.primair }}>{totalen.totaalAanmeldingen}</span>
+          </div>
+        </Card>
+
         {/* Kaart met fysio locaties */}
         <Card>
-          <CardTitle sub="Locatie fysiotherapeuten in de gemeente">Fysio-praktijken op de kaart</CardTitle>
-          <svg viewBox="0 0 100 110" style={{ width: '100%', maxHeight: '280px', backgroundColor: '#F1F5F9', borderRadius: '8px' }}>
-            {/* Achtergrond kernen (lichtgrijs) */}
+          <CardTitle sub="Locaties in de gemeente">Fysio-praktijken op de kaart</CardTitle>
+          <svg viewBox="0 0 100 110" style={{ width: '100%', maxHeight: '260px', backgroundColor: '#F1F5F9', borderRadius: '8px' }}>
+            {/* Achtergrond kernen */}
             {KERNEN.map(kern => (
               <g key={kern.id}>
-                <circle 
-                  cx={kern.x} 
-                  cy={kern.y} 
-                  r={3} 
-                  fill={KLEUREN.rand}
-                  opacity={0.5}
-                />
-                <text 
-                  x={kern.x} 
-                  y={kern.y + 6} 
-                  textAnchor="middle" 
-                  style={{ fontSize: '2.5px', fill: KLEUREN.tekstLicht, pointerEvents: 'none' }}
-                >
+                <circle cx={kern.x} cy={kern.y} r={3} fill={KLEUREN.rand} opacity={0.5} />
+                <text x={kern.x} y={kern.y + 6} textAnchor="middle" style={{ fontSize: '2.5px', fill: KLEUREN.tekstLicht, pointerEvents: 'none' }}>
                   {kern.naam}
                 </text>
               </g>
@@ -718,51 +811,18 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
               if (!kern) return null;
               const fysioData = marktaandeel.find(m => m.id === fysio.id);
               const isSelected = selectedFysio === fysio.id;
-              // Grootte gebaseerd op aantal aanmeldingen
-              const r = Math.max(5, Math.min(10, (fysioData?.aantal || 0) / 30));
+              const r = Math.max(5, Math.min(10, (fysioData?.aantal || 0) / 15));
               
               return (
                 <g key={fysio.id}>
-                  {/* Glow effect voor geselecteerde */}
-                  {isSelected && (
-                    <circle cx={kern.x} cy={kern.y} r={r + 3} fill={fysio.kleur} opacity={0.3} />
-                  )}
-                  {/* Hoofdcirkel */}
-                  <circle 
-                    cx={kern.x} 
-                    cy={kern.y} 
-                    r={r} 
-                    fill={fysio.kleur}
-                    stroke="#fff"
-                    strokeWidth="2"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedFysio(isSelected ? null : fysio.id)}
-                  />
-                  {/* Fysio icoon */}
-                  <text 
-                    x={kern.x} 
-                    y={kern.y + 1.5} 
-                    textAnchor="middle" 
-                    style={{ fontSize: '5px', fill: '#fff', pointerEvents: 'none' }}
-                  >
-                    🏥
-                  </text>
-                  {/* Label */}
-                  <text 
-                    x={kern.x} 
-                    y={kern.y + r + 5} 
-                    textAnchor="middle" 
-                    style={{ fontSize: '3.5px', fontWeight: 600, fill: fysio.kleur, pointerEvents: 'none' }}
-                  >
+                  {isSelected && <circle cx={kern.x} cy={kern.y} r={r + 3} fill={fysio.kleur} opacity={0.3} />}
+                  <circle cx={kern.x} cy={kern.y} r={r} fill={fysio.kleur} stroke="#fff" strokeWidth="2"
+                    style={{ cursor: 'pointer' }} onClick={() => setSelectedFysio(isSelected ? null : fysio.id)} />
+                  <text x={kern.x} y={kern.y + 1.5} textAnchor="middle" style={{ fontSize: '5px', fill: '#fff', pointerEvents: 'none' }}>🏥</text>
+                  <text x={kern.x} y={kern.y + r + 5} textAnchor="middle" style={{ fontSize: '3.5px', fontWeight: 600, fill: fysio.kleur, pointerEvents: 'none' }}>
                     {fysio.naam}
                   </text>
-                  {/* Aantal aanmeldingen */}
-                  <text 
-                    x={kern.x} 
-                    y={kern.y + r + 8.5} 
-                    textAnchor="middle" 
-                    style={{ fontSize: '3px', fill: KLEUREN.tekstSub, pointerEvents: 'none' }}
-                  >
+                  <text x={kern.x} y={kern.y + r + 8.5} textAnchor="middle" style={{ fontSize: '3px', fill: KLEUREN.tekstSub, pointerEvents: 'none' }}>
                     {fysioData?.aantal || 0} aanm.
                   </text>
                 </g>
@@ -771,23 +831,13 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
           </svg>
           
           {/* Legenda */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px', flexWrap: 'wrap' }}>
             {FYSIO_DATA.map(f => (
-              <div 
-                key={f.id} 
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '6px',
-                  padding: '4px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: selectedFysio === f.id ? `${f.kleur}20` : 'transparent',
-                  cursor: 'pointer',
-                }}
-                onClick={() => setSelectedFysio(selectedFysio === f.id ? null : f.id)}
-              >
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', borderRadius: '6px',
+                backgroundColor: selectedFysio === f.id ? `${f.kleur}20` : 'transparent', cursor: 'pointer' }}
+                onClick={() => setSelectedFysio(selectedFysio === f.id ? null : f.id)}>
                 <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: f.kleur }} />
-                <span style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>{f.naam} ({f.locatie})</span>
+                <span style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>{f.naam}</span>
               </div>
             ))}
           </div>
@@ -797,13 +847,7 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
             const fysio = marktaandeel.find(f => f.id === selectedFysio);
             if (!fysio) return null;
             return (
-              <div style={{ 
-                marginTop: '12px', 
-                padding: '12px', 
-                backgroundColor: `${fysio.kleur}15`, 
-                borderRadius: '8px',
-                borderLeft: `4px solid ${fysio.kleur}`,
-              }}>
+              <div style={{ marginTop: '12px', padding: '12px', backgroundColor: `${fysio.kleur}15`, borderRadius: '8px', borderLeft: `4px solid ${fysio.kleur}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <p style={{ margin: 0, fontWeight: 600, fontSize: '14px' }}>{fysio.naam}</p>
@@ -811,7 +855,7 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <p style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: fysio.kleur }}>{fysio.aantal}</p>
-                    <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.tekstSub }}>{fysio.percentage}% van totaal</p>
+                    <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.tekstSub }}>{fysio.percentage}% marktaandeel</p>
                   </div>
                 </div>
               </div>
@@ -819,61 +863,64 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
           })()}
         </Card>
 
-        {/* Verdeling per fysio */}
+        {/* Pie chart verdeling */}
         <Card>
-          <CardTitle sub="Geselecteerde periode">Verdeling per praktijk</CardTitle>
+          <CardTitle sub="Verdeling over praktijken">Marktaandeel</CardTitle>
           
-          {/* Pie chart zonder labels */}
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
                 data={marktaandeel}
                 cx="50%"
                 cy="50%"
-                innerRadius={45}
-                outerRadius={70}
+                innerRadius={60}
+                outerRadius={95}
                 dataKey="aantal"
-                paddingAngle={2}
+                paddingAngle={3}
+                label={({ naam, percentage }) => `${percentage}%`}
+                labelLine={false}
               >
                 {marktaandeel.map((entry, i) => (
-                  <Cell key={i} fill={entry.kleur} />
+                  <Cell key={i} fill={entry.kleur} stroke="#fff" strokeWidth={2} />
                 ))}
               </Pie>
               <Tooltip formatter={(v, name, props) => [`${v} aanmeldingen (${props.payload.percentage}%)`, props.payload.naam]} />
             </PieChart>
           </ResponsiveContainer>
           
-          {/* Details per fysio */}
-          <div style={{ marginTop: '12px' }}>
-            {marktaandeel.map((f, i) => (
-              <div key={f.id} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px',
-                backgroundColor: KLEUREN.achtergrond,
-                borderRadius: '8px',
-                marginBottom: i < 2 ? '8px' : 0,
-                borderLeft: `4px solid ${f.kleur}`,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-              onClick={() => setSelectedFysio(selectedFysio === f.id ? null : f.id)}
-              >
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600, fontSize: '14px' }}>{f.naam}</p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>
-                    {f.locatie} • {f.percentage}% van aanmeldingen
-                  </p>
-                </div>
-                <p style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: f.kleur }}>{f.aantal}</p>
+          {/* Legenda onder pie chart */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '16px', flexWrap: 'wrap' }}>
+            {marktaandeel.map(f => (
+              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '14px', height: '14px', borderRadius: '4px', backgroundColor: f.kleur }} />
+                <span style={{ fontSize: '13px', color: KLEUREN.tekst, fontWeight: 500 }}>{f.naam}</span>
+                <span style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>({f.locatie})</span>
               </div>
             ))}
+          </div>
+          
+          {/* Conversie indicator */}
+          <div style={{ marginTop: '24px', padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: KLEUREN.tekst }}>Conversie hoog risico → fysio</span>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }}>
+                {aanmeldingsPercentage}% / {doelPercentage}% doel
+              </span>
+            </div>
+            <div style={{ height: '12px', backgroundColor: KLEUREN.rand, borderRadius: '6px', overflow: 'hidden', position: 'relative' }}>
+              <div style={{ position: 'absolute', left: `${doelPercentage}%`, top: 0, bottom: 0, width: '3px', backgroundColor: KLEUREN.tekst, zIndex: 2 }} />
+              <div style={{ width: `${Math.min(aanmeldingsPercentage, 100)}%`, height: '100%', backgroundColor: aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : KLEUREN.primair, borderRadius: '6px', transition: 'width 0.3s ease' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: KLEUREN.tekstSub }}>
+              <span>0%</span>
+              <span style={{ fontWeight: 600 }}>← Doel: {doelPercentage}%</span>
+              <span>100%</span>
+            </div>
           </div>
         </Card>
       </div>
 
-      {/* Grafiek */}
+      {/* Trend grafiek */}
       <Card>
         <CardTitle sub={filters.jaren.length > 1 ? 'Per jaar' : 'Per maand'}>
           Aanmeldingen over tijd {filters.jaren.length === 1 ? filters.jaren[0] : `${Math.min(...filters.jaren)} - ${Math.max(...filters.jaren)}`}
@@ -894,57 +941,47 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
 
       {/* Inzichten */}
       <Card>
-        <CardTitle>Wat kunnen we hieruit opmaken?</CardTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+        <CardTitle>Analyse en actiepunten</CardTitle>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
           
-          <div style={{ padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '24px' }}>📊</span>
-              <h4 style={{ margin: 0, fontSize: '14px' }}>Bereik</h4>
+          <div style={{ padding: '18px', backgroundColor: KLEUREN.achtergrond, borderRadius: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <span style={{ fontSize: '28px' }}>📊</span>
+              <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>Bereik analyse</h4>
             </div>
-            <p style={{ margin: 0, fontSize: '13px', color: KLEUREN.tekstSub, lineHeight: 1.6 }}>
-              Van de <strong>{totaalHoogRisico}</strong> personen met hoog valrisico heeft 
-              <strong style={{ color: aanmeldingsPercentage >= 50 ? KLEUREN.laag : KLEUREN.hoog }}> {aanmeldingsPercentage}%</strong> zich 
-              aangemeld voor een fysiek onderzoek. 
-              {aanmeldingsPercentage < 50 && (
-                <span> Er is ruimte om <strong>{nietAangemeld}</strong> personen nog te bereiken.</span>
+            <p style={{ margin: 0, fontSize: '14px', color: KLEUREN.tekstSub, lineHeight: 1.7 }}>
+              Van de <strong style={{ color: KLEUREN.tekst }}>{totaalHoogRisico}</strong> personen met hoog risico heeft 
+              <strong style={{ color: aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }}> {aanmeldingsPercentage}%</strong> zich 
+              aangemeld bij een fysiotherapeut. 
+              {aanmeldingsPercentage < doelPercentage && (
+                <span> Om het doel van {doelPercentage}% te bereiken zijn nog <strong style={{ color: KLEUREN.tekst }}>{nogTeBereiken}</strong> aanmeldingen nodig.</span>
               )}
             </p>
           </div>
           
-          <div style={{ padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '24px' }}>🏥</span>
-              <h4 style={{ margin: 0, fontSize: '14px' }}>Capaciteit</h4>
+          <div style={{ padding: '18px', backgroundColor: KLEUREN.achtergrond, borderRadius: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <span style={{ fontSize: '28px' }}>📅</span>
+              <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>Seizoenspatroon</h4>
             </div>
-            <p style={{ margin: 0, fontSize: '13px', color: KLEUREN.tekstSub, lineHeight: 1.6 }}>
-              <strong>{marktaandeel[0]?.naam}</strong> in {marktaandeel[0]?.locatie} verwerkt de meeste aanmeldingen ({marktaandeel[0]?.percentage}%). 
-              De spreiding over de drie praktijken kan helpen bij capaciteitsplanning.
+            <p style={{ margin: 0, fontSize: '14px', color: KLEUREN.tekstSub, lineHeight: 1.7 }}>
+              De aanmeldingen pieken in <strong style={{ color: KLEUREN.tekst }}>september-november</strong> (Week tegen Vallen). 
+              In zomermaanden is er een dip. Overweeg extra voorlichting in rustige periodes.
             </p>
           </div>
           
-          <div style={{ padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '24px' }}>📅</span>
-              <h4 style={{ margin: 0, fontSize: '14px' }}>Seizoenspatroon</h4>
+          <div style={{ padding: '18px', backgroundColor: KLEUREN.primairLicht, borderRadius: '12px', borderLeft: `4px solid ${KLEUREN.primair}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <span style={{ fontSize: '28px' }}>💡</span>
+              <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: KLEUREN.primair }}>Aanbevolen acties</h4>
             </div>
-            <p style={{ margin: 0, fontSize: '13px', color: KLEUREN.tekstSub, lineHeight: 1.6 }}>
-              De aanmeldingen pieken in <strong>september-november</strong>, 
-              mogelijk door de "Week tegen Vallen" en najaarsvoorlichting. 
-              In de zomermaanden is er een dip.
-            </p>
+            <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: KLEUREN.tekst, lineHeight: 1.8 }}>
+              <li>Actieve doorverwijzing vanuit huisarts na positieve test</li>
+              <li>Persoonlijke brief naar hoog-risico met concrete vervolgstappen</li>
+              <li>Terugbelactie bij niet-aanmelding na 4 weken</li>
+              <li>Monitor of de huidige capaciteit voldoende is als het bereik toeneemt</li>
+            </ul>
           </div>
-        </div>
-        
-        {/* Actiepunten */}
-        <div style={{ marginTop: '20px', padding: '16px', backgroundColor: KLEUREN.primairLicht, borderRadius: '10px' }}>
-          <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: KLEUREN.primair }}>💡 Mogelijke acties</h4>
-          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: KLEUREN.tekstSub, lineHeight: 1.8 }}>
-            <li>Onderzoek waarom <strong>{100 - aanmeldingsPercentage}%</strong> van de hoog-risico personen zich niet aanmeldt</li>
-            <li>Overweeg actieve doorverwijzing vanuit de huisartsenpraktijk na een positieve valrisicotest</li>
-            <li>Versterk voorlichting in rustigere maanden (januari-februari, juli-augustus)</li>
-            <li>Monitor of de huidige capaciteit voldoende is als het bereik toeneemt</li>
-          </ul>
         </div>
       </Card>
     </div>
@@ -1284,6 +1321,15 @@ export default function ValrisicoDashboard() {
       w.document.write('<div class="leeswijzer-item"><div class="page-num">5</div><div><h4>Aanbevelingen</h4><p>Prioriteiten, KPI\'s en vervolgstappen</p></div></div>');
       w.document.write('</div></div>');
       
+      w.document.write('<div class="card" style="border-left:4px solid #0D6560;background:#f0fdf4">');
+      w.document.write('<h3>🔒 Privacy & gegevensbescherming</h3>');
+      w.document.write('<p style="margin-bottom:8px">Dit rapport voldoet aan de AVG en bevat <strong>geen persoonsgegevens</strong>. Alle data is volledig geanonimiseerd:</p>');
+      w.document.write('<ul style="margin-left:18px;font-size:9pt;margin-bottom:0">');
+      w.document.write('<li><strong>Niet herleidbaar:</strong> Geen namen, adressen of andere identificerende gegevens</li>');
+      w.document.write('<li><strong>Geaggregeerd:</strong> Alleen groepsstatistieken, geen individuele resultaten</li>');
+      w.document.write('<li><strong>Minimumdrempel:</strong> Data wordt alleen getoond bij minimaal 10 tests per groep</li>');
+      w.document.write('</ul></div>');
+      
       w.document.write('<div class="card card-teal">');
       w.document.write('<h3>ℹ️ Over dit rapport</h3>');
       w.document.write('<p>Dit rapport is gebaseerd op de VeiligheidNL Valrisicotest, een wetenschappelijk onderbouwde screeningstool. ');
@@ -1555,7 +1601,7 @@ export default function ValrisicoDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: KLEUREN.tekst }}>
+    <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: KLEUREN.tekst, overflow: 'auto' }}>
       
       {/* STICKY HEADER WRAPPER */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: KLEUREN.wit, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
