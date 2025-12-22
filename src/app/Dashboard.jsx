@@ -84,30 +84,41 @@ const genereerTestData = () => {
   let id = 1;
   
   KERNEN.forEach(kern => {
-    const basisTests = Math.floor(Math.random() * 20) + 10;
+    // Bereik van ~25% over 2 jaar, ~37.5% over 3 jaar = ~12.5% per jaar
+    const basisPerJaar = kern.inw65plus * 0.125;
     
     JAREN.forEach(jaar => {
-      // Meer tests in latere jaren (programma groeit)
-      const jaarFactor = jaar === 2023 ? 0.6 : jaar === 2024 ? 1.0 : 0.9; // 2025 is nog niet compleet
+      const jaarFactor = jaar === 2023 ? 0.9 : jaar === 2024 ? 1.1 : 1.0;
+      const jaarTests = Math.floor(basisPerJaar * jaarFactor);
       
-      MAANDEN.forEach(maand => {
-        // 2025 heeft alleen data t/m huidige maand (december)
+      // Verdeel over maanden (niet uniform - meer in herfst)
+      const maandVerdeling = MAANDEN.map(m => {
+        if (jaar === 2025 && m.id > 12) return 0;
+        const seizoenFactor = [9, 10, 11].includes(m.id) ? 1.4 : [7, 8].includes(m.id) ? 0.6 : 1;
+        return seizoenFactor;
+      });
+      const totaalFactor = maandVerdeling.reduce((a, b) => a + b, 0);
+      
+      MAANDEN.forEach((maand, idx) => {
         if (jaar === 2025 && maand.id > 12) return;
         
-        const seizoenFactor = [9, 10, 11].includes(maand.id) ? 1.4 : 
-                             [1, 2, 12].includes(maand.id) ? 0.8 : 1;
-        const maandTests = Math.floor(basisTests * jaarFactor * seizoenFactor * (0.8 + Math.random() * 0.4));
+        const maandTests = Math.floor(jaarTests * (maandVerdeling[idx] / totaalFactor));
+        if (maandTests === 0) return;
         
         ['65-74', '75-84', '85+'].forEach(leeftijd => {
-          const leeftijdFactor = leeftijd === '65-74' ? 0.42 : leeftijd === '75-84' ? 0.39 : 0.19;
-          const leeftijdTests = Math.floor(maandTests * leeftijdFactor);
+          // Verdeling naar leeftijd (gebaseerd op bevolkingsopbouw)
+          const leeftijdFactor = leeftijd === '65-74' ? 0.50 : leeftijd === '75-84' ? 0.35 : 0.15;
+          const leeftijdTests = Math.max(0, Math.floor(maandTests * leeftijdFactor));
+          if (leeftijdTests === 0) return;
           
           ['Man', 'Vrouw'].forEach(geslacht => {
-            const geslachtFactor = geslacht === 'Vrouw' ? 0.57 : 0.43;
-            const tests = Math.max(1, Math.floor(leeftijdTests * geslachtFactor));
+            const geslachtFactor = geslacht === 'Vrouw' ? 0.55 : 0.45;
+            const tests = Math.max(0, Math.floor(leeftijdTests * geslachtFactor));
+            if (tests === 0) return;
             
-            const hoogKans = leeftijd === '85+' ? 0.50 : leeftijd === '75-84' ? 0.37 : 0.23;
-            const matigKans = leeftijd === '85+' ? 0.38 : leeftijd === '75-84' ? 0.41 : 0.42;
+            // Risicoverdeling per leeftijdsgroep
+            const hoogKans = leeftijd === '85+' ? 0.48 : leeftijd === '75-84' ? 0.35 : 0.22;
+            const matigKans = leeftijd === '85+' ? 0.35 : leeftijd === '75-84' ? 0.40 : 0.43;
             
             const hoog = Math.floor(tests * hoogKans);
             const matig = Math.floor(tests * matigKans);
@@ -1004,23 +1015,24 @@ export default function ValrisicoDashboard() {
     const matig = gefilterdData.reduce((a, d) => a + d.matig, 0);
     const hoog = gefilterdData.reduce((a, d) => a + d.hoog, 0);
     
-    // Bepaal welke kernen in de selectie zitten
-    const kernenInSelectie = [...new Set(gefilterdData.map(d => d.kern))];
-    const inw65plus = KERNEN
-      .filter(k => wijk === 'alle' || k.wijk === wijk)
-      .reduce((a, k) => a + k.inw65plus, 0);
+    // Bepaal welke kernen in de selectie zitten op basis van wijk filter
+    const kernenInWijk = KERNEN.filter(k => wijk === 'alle' || k.wijk === wijk);
+    const inw65plus = kernenInWijk.reduce((a, k) => a + k.inw65plus, 0);
     
-    const perKern = KERNEN.map(k => {
+    // Per kern statistieken - alleen kernen in de geselecteerde wijk(en)
+    const perKern = kernenInWijk.map(k => {
       const kernData = gefilterdData.filter(d => d.kern === k.id);
       return {
-        kern: k.id, naam: k.naam, wijk: k.wijk,
+        kern: k.id, 
+        naam: k.naam, 
+        wijk: k.wijk,
         inw65plus: k.inw65plus,
         tests: kernData.reduce((a, d) => a + d.tests, 0),
         laag: kernData.reduce((a, d) => a + d.laag, 0),
         matig: kernData.reduce((a, d) => a + d.matig, 0),
         hoog: kernData.reduce((a, d) => a + d.hoog, 0),
       };
-    }).filter(k => k.tests > 0);
+    });
     
     // Bereik = tests / inwoners 65+
     const bereik = inw65plus > 0 ? Math.round((tests / inw65plus) * 100) : 0;
@@ -1080,100 +1092,279 @@ export default function ValrisicoDashboard() {
     { name: 'Hoog', value: stats.hoog, color: KLEUREN.hoog },
   ];
 
+  // PDF Rapport genereren
+  const generatePDF = () => {
+    try {
+      const currentDate = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+      const wijkNaam = wijk === 'alle' ? 'Alle wijken' : (WIJKEN.find(w => w.code === wijk)?.naam || wijk);
+      const jarenTekst = filters.jaren.length === JAREN.length ? 'Alle' : filters.jaren.join(', ');
+      const leeftijdTekst = filters.leeftijden.length === 3 ? 'Alle' : filters.leeftijden.join(', ');
+      const geslachtTekst = filters.geslachten.length === 2 ? 'Man + Vrouw' : filters.geslachten[0];
+      
+      const laagstePreventie = [...PREVENTIE].sort((a, b) => a.perc - b.perc).slice(0, 3);
+      const topKernen = [...stats.perKern].filter(k => k.tests > 0).sort((a, b) => (b.hoog / b.tests) - (a.hoog / a.tests)).slice(0, 3);
+      
+      const preventiePerc = PREVENTIE.find(p => p.id === 1)?.perc || 32;
+      const woningPerc = 100 - (PREVENTIE.find(p => p.id === 2)?.perc || 44);
+
+      const w = window.open('', '_blank');
+      if (!w) {
+        alert('Pop-up geblokkeerd! Sta pop-ups toe voor deze site.');
+        return;
+      }
+      
+      w.document.write('<html><head><meta charset="UTF-8"><title>Valrisico Rapport</title>');
+      w.document.write('<style>');
+      w.document.write('@page{size:A4;margin:15mm}*{box-sizing:border-box;margin:0;padding:0}');
+      w.document.write('body{font-family:Arial,sans-serif;font-size:10pt;line-height:1.4;color:#1e293b;padding:20px}');
+      w.document.write('.page{page-break-after:always;padding-bottom:20px}.page:last-child{page-break-after:avoid}');
+      w.document.write('.header{background:#0D6560;color:white;padding:15px 20px;margin-bottom:15px;border-radius:8px}');
+      w.document.write('.header h1{font-size:18pt;margin-bottom:3px}.header p{font-size:9pt;opacity:0.9}');
+      w.document.write('.section{margin-bottom:15px}.section-title{font-size:12pt;font-weight:bold;color:#0D6560;border-bottom:2px solid #0D6560;padding-bottom:4px;margin-bottom:10px}');
+      w.document.write('.kpi-grid{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}');
+      w.document.write('.kpi-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;text-align:center;flex:1;min-width:100px}');
+      w.document.write('.kpi-value{font-size:20pt;font-weight:bold}.green{color:#15803D}.orange{color:#C2410C}.red{color:#B91C1C}');
+      w.document.write('.kpi-label{font-size:8pt;color:#64748b;margin-top:2px}');
+      w.document.write('.filter-box{background:#CCFBF1;padding:8px 12px;border-radius:6px;font-size:9pt;margin-bottom:12px}');
+      w.document.write('table{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:12px}');
+      w.document.write('th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0}th{background:#f8fafc;font-weight:600;color:#475569}');
+      w.document.write('.badge{display:inline-block;padding:2px 6px;border-radius:8px;font-size:8pt;font-weight:600}');
+      w.document.write('.badge-red{background:#fee2e2;color:#B91C1C}.badge-orange{background:#fed7aa;color:#C2410C}.badge-green{background:#dcfce7;color:#15803D}');
+      w.document.write('.insight-box{background:#fffbeb;border-left:3px solid #f59e0b;padding:10px;margin-bottom:10px;font-size:9pt}');
+      w.document.write('.insight-red{background:#fef2f2;border-color:#B91C1C}');
+      w.document.write('.footer{font-size:8pt;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:15px;text-align:center}');
+      w.document.write('.two-col{display:flex;gap:15px}.two-col>div{flex:1}');
+      w.document.write('.leeswijzer{background:#f0f9ff;border:1px solid #0ea5e9;border-radius:6px;padding:12px;margin-bottom:12px}');
+      w.document.write('.leeswijzer h3{color:#0369a1;font-size:10pt;margin-bottom:6px}');
+      w.document.write('ul,ol{margin-left:18px;font-size:9pt}li{margin-bottom:3px}');
+      w.document.write('.print-btn{background:#0D6560;color:white;border:none;padding:12px 30px;font-size:14px;font-weight:bold;border-radius:6px;cursor:pointer;margin:10px}');
+      w.document.write('@media print{.no-print{display:none !important}}');
+      w.document.write('</style></head><body>');
+      
+      // Print button
+      w.document.write('<div class="no-print" style="text-align:center;padding:15px;background:#f0f0f0;margin-bottom:20px;border-radius:8px">');
+      w.document.write('<button class="print-btn" onclick="window.print()">🖨️ Afdrukken / Opslaan als PDF</button>');
+      w.document.write('<button class="print-btn" style="background:#666" onclick="window.close()">✕ Sluiten</button>');
+      w.document.write('</div>');
+      
+      // PAGINA 1
+      w.document.write('<div class="page">');
+      w.document.write('<div class="header"><h1>📋 Valrisico Rapport</h1><p>Gemeente Oude IJsselstreek • ' + currentDate + '</p></div>');
+      
+      w.document.write('<div class="leeswijzer"><h3>📖 Leeswijzer</h3>');
+      w.document.write('<p style="margin-bottom:8px;font-size:9pt">Dit rapport geeft een samenvatting van de valrisico-analyse voor 65-plussers.</p>');
+      w.document.write('<ul><li><b>Pagina 1:</b> Leeswijzer en begrippen</li><li><b>Pagina 2:</b> Kerncijfers</li><li><b>Pagina 3:</b> Aanbevelingen</li></ul></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">Begrippen</div>');
+      w.document.write('<table><tr><th style="width:25%">Begrip</th><th>Uitleg</th></tr>');
+      w.document.write('<tr><td><b>Laag risico</b></td><td>Geen recente val, geen valangst, geen mobiliteitsproblemen</td></tr>');
+      w.document.write('<tr><td><b>Matig risico</b></td><td>Eén of meer risicofactoren, maar geen ernstige val</td></tr>');
+      w.document.write('<tr><td><b>Hoog risico</b></td><td>Ernstige val, meerdere vallen, of kan niet zelf opstaan</td></tr>');
+      w.document.write('<tr><td><b>Bereik</b></td><td>Percentage 65-plussers dat de test heeft ingevuld</td></tr></table></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">Geselecteerde data</div>');
+      w.document.write('<div class="filter-box"><b>Filters:</b> Wijk: ' + wijkNaam + ' | Jaren: ' + jarenTekst + ' | Leeftijd: ' + leeftijdTekst + ' | Geslacht: ' + geslachtTekst + '</div>');
+      w.document.write('<p style="font-size:9pt">Gebaseerd op <b>' + stats.tests.toLocaleString() + '</b> tests onder <b>' + stats.inw65plus.toLocaleString() + '</b> inwoners 65+ (bereik: ' + stats.bereik + '%).</p></div>');
+      
+      w.document.write('<div class="footer">Valrisico Dashboard • Pagina 1 van 3</div></div>');
+      
+      // PAGINA 2
+      w.document.write('<div class="page">');
+      w.document.write('<div class="section"><div class="section-title">Kerncijfers</div>');
+      w.document.write('<div class="kpi-grid">');
+      w.document.write('<div class="kpi-box"><div class="kpi-value">' + stats.tests.toLocaleString() + '</div><div class="kpi-label">Tests</div></div>');
+      w.document.write('<div class="kpi-box"><div class="kpi-value">' + stats.bereik + '%</div><div class="kpi-label">Bereik</div></div>');
+      w.document.write('<div class="kpi-box"><div class="kpi-value red">' + stats.pHoog + '%</div><div class="kpi-label">Hoog risico</div></div>');
+      w.document.write('</div></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">Risicoverdeling</div>');
+      w.document.write('<div class="kpi-grid">');
+      w.document.write('<div class="kpi-box"><div class="kpi-value green">' + stats.pLaag + '%</div><div class="kpi-label">Laag (' + stats.laag + ')</div></div>');
+      w.document.write('<div class="kpi-box"><div class="kpi-value orange">' + stats.pMatig + '%</div><div class="kpi-label">Matig (' + stats.matig + ')</div></div>');
+      w.document.write('<div class="kpi-box"><div class="kpi-value red">' + stats.pHoog + '%</div><div class="kpi-label">Hoog (' + stats.hoog + ')</div></div>');
+      w.document.write('</div>');
+      w.document.write('<div class="insight-box insight-red"><b>⚠️</b> ' + stats.hoog + ' personen (' + stats.pHoog + '%) hebben hoog valrisico.</div></div>');
+      
+      w.document.write('<div class="two-col"><div class="section"><div class="section-title">Top risicofactoren</div><table>');
+      w.document.write('<tr><th>Factor</th><th>%</th></tr>');
+      RISICOFACTOREN.slice(0, 5).forEach(f => {
+        const badgeClass = f.perc >= 50 ? 'badge-red' : f.perc >= 35 ? 'badge-orange' : 'badge-green';
+        w.document.write('<tr><td>' + f.label + '</td><td><span class="badge ' + badgeClass + '">' + f.perc + '%</span></td></tr>');
+      });
+      w.document.write('</table></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">Laagste preventie</div><table>');
+      w.document.write('<tr><th>Maatregel</th><th>Gap</th></tr>');
+      laagstePreventie.forEach(p => {
+        w.document.write('<tr><td>' + p.label + '</td><td><span class="badge badge-red">' + (100 - p.perc) + '%</span></td></tr>');
+      });
+      w.document.write('</table></div></div>');
+      
+      if (topKernen.length > 0) {
+        w.document.write('<div class="section"><div class="section-title">Kernen hoogste risico</div><table>');
+        w.document.write('<tr><th>Kern</th><th>Tests</th><th>Hoog</th></tr>');
+        topKernen.forEach(k => {
+          const perc = Math.round(k.hoog / k.tests * 100);
+          w.document.write('<tr><td>' + k.naam + '</td><td>' + k.tests + '</td><td><span class="badge badge-red">' + perc + '%</span></td></tr>');
+        });
+        w.document.write('</table></div>');
+      }
+      
+      w.document.write('<div class="footer">Valrisico Dashboard • Pagina 2 van 3</div></div>');
+      
+      // PAGINA 3
+      w.document.write('<div class="page">');
+      w.document.write('<div class="section"><div class="section-title">Aanbevelingen</div>');
+      w.document.write('<div class="insight-box insight-red"><b>🎯 Prioriteit 1: Beweegprogramma\'s</b><br>Slechts ' + preventiePerc + '% doet evenwichtsoefeningen.</div>');
+      w.document.write('<div class="insight-box"><b>🏠 Prioriteit 2: Woningchecks</b><br>' + woningPerc + '% heeft geen huisaanpassingen gedaan.</div>');
+      w.document.write('<div class="insight-box"><b>🏥 Prioriteit 3: Fysio-doorverwijzing</b><br>Verbeter doorverwijzing door huisarts.</div></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">Doelgroepen</div><table>');
+      w.document.write('<tr><th>Doelgroep</th><th>Aanpak</th><th>Prio</th></tr>');
+      w.document.write('<tr><td>85+ jarigen</td><td>Huisbezoeken, coaching</td><td><span class="badge badge-red">Hoog</span></td></tr>');
+      w.document.write('<tr><td>Recidiverende vallers</td><td>Multidisciplinair team</td><td><span class="badge badge-red">Hoog</span></td></tr>');
+      w.document.write('<tr><td>Matig risico</td><td>Groepscursussen</td><td><span class="badge badge-orange">Matig</span></td></tr>');
+      w.document.write('<tr><td>Laag risico</td><td>Voorlichting</td><td><span class="badge badge-green">Laag</span></td></tr>');
+      w.document.write('</table></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">KPI\'s</div><ul>');
+      w.document.write('<li>Percentage hoog risico: doel daling van ' + stats.pHoog + '% naar 25%</li>');
+      w.document.write('<li>Bereik valrisicotest: doel stijging van ' + stats.bereik + '% naar 15%</li>');
+      w.document.write('<li>Deelname beweegprogramma\'s: doel 50% van hoog-risico</li></ul></div>');
+      
+      w.document.write('<div class="section"><div class="section-title">Vervolgstappen</div><ol>');
+      w.document.write('<li>Presenteer bevindingen aan stakeholders</li>');
+      w.document.write('<li>Stel werkgroep valpreventie samen</li>');
+      w.document.write('<li>Ontwikkel communicatiecampagne</li>');
+      w.document.write('<li>Plan evaluatie over 12 maanden</li></ol></div>');
+      
+      w.document.write('<div class="footer">Valrisico Dashboard • Pagina 3 van 3</div></div>');
+      
+      w.document.write('</body></html>');
+      w.document.close();
+      
+    } catch (error) {
+      console.error('PDF generatie fout:', error);
+      alert('Er ging iets mis bij het genereren van het rapport. Probeer het opnieuw.');
+    }
+  };
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: KLEUREN.tekst }}>
       
-      {/* HEADER */}
-      <header style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '12px 16px', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: KLEUREN.primair, display: 'flex', alignItems: 'center', justifyContent: 'center', color: KLEUREN.wit, fontSize: '16px', flexShrink: 0 }}>🛡️</div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>Valrisico Dashboard</h1>
-              <p style={{ margin: 0, fontSize: '11px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
+      {/* STICKY HEADER WRAPPER */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: KLEUREN.achtergrond }}>
+        {/* HEADER */}
+        <header style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '10px 16px' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: KLEUREN.primair, display: 'flex', alignItems: 'center', justifyContent: 'center', color: KLEUREN.wit, fontSize: '14px', flexShrink: 0 }}>🛡️</div>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>Valrisico Dashboard</h1>
+                <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
+                style={{ padding: '5px 24px 5px 8px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '11px', color: KLEUREN.tekst, cursor: 'pointer' }}>
+                <option value="alle">Alle wijken</option>
+                {WIJKEN.map(w => <option key={w.code} value={w.code}>{w.naam}</option>)}
+              </select>
+              
+              <button 
+                onClick={() => generatePDF()}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 14px', 
+                  borderRadius: '6px', 
+                  border: 'none', 
+                  backgroundColor: KLEUREN.primair, 
+                  color: KLEUREN.wit, 
+                  fontSize: '11px', 
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                🖨️ PDF Rapport
+              </button>
             </div>
           </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
-              style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '12px', color: KLEUREN.tekst, cursor: 'pointer' }}>
-              <option value="alle">Alle wijken</option>
-              {WIJKEN.map(w => <option key={w.code} value={w.code}>{w.naam}</option>)}
-            </select>
-          </div>
-        </div>
-      </header>
+        </header>
 
-      {/* ACTIEVE FILTERS BALK */}
-      <div style={{ backgroundColor: KLEUREN.primairLicht, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '10px 16px' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', fontWeight: 600, color: KLEUREN.primair }}>Actieve filters:</span>
-          
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Wijk */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}` }}>
-              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Wijk:</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: KLEUREN.tekst }}>
-                {wijk === 'alle' ? 'Alle wijken' : WIJKEN.find(w => w.code === wijk)?.naam}
-              </span>
+        {/* ACTIEVE FILTERS BALK */}
+        <div style={{ backgroundColor: KLEUREN.primairLicht, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '8px 16px' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: KLEUREN.primair }}>Filters:</span>
+            
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Wijk */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: KLEUREN.wit, padding: '3px 8px', borderRadius: '5px', border: `1px solid ${KLEUREN.rand}` }}>
+                <span style={{ fontSize: '9px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Wijk:</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: KLEUREN.tekst }}>
+                  {wijk === 'alle' ? 'Alle' : WIJKEN.find(w => w.code === wijk)?.naam}
+                </span>
+              </div>
+              
+              {/* Jaren */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: KLEUREN.wit, padding: '3px 8px', borderRadius: '5px', border: `1px solid ${filters.jaren.length === JAREN.length ? KLEUREN.rand : KLEUREN.matig}` }}>
+                <span style={{ fontSize: '9px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Jaar:</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: filters.jaren.length === JAREN.length ? KLEUREN.tekst : KLEUREN.matig }}>
+                  {filters.jaren.length === JAREN.length ? 'Alle' : filters.jaren.length === 1 ? filters.jaren[0] : filters.jaren.sort().join(', ')}
+                </span>
+              </div>
+              
+              {/* Maanden */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: KLEUREN.wit, padding: '3px 8px', borderRadius: '5px', border: `1px solid ${filters.maanden.length === 12 ? KLEUREN.rand : KLEUREN.matig}` }}>
+                <span style={{ fontSize: '9px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Mnd:</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: filters.maanden.length === 12 ? KLEUREN.tekst : KLEUREN.matig }}>
+                  {filters.maanden.length === 12 ? 'Alle' : `${filters.maanden.length}/12`}
+                </span>
+              </div>
+              
+              {/* Leeftijd */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: KLEUREN.wit, padding: '3px 8px', borderRadius: '5px', border: `1px solid ${filters.leeftijden.length === 3 ? KLEUREN.rand : KLEUREN.matig}` }}>
+                <span style={{ fontSize: '9px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Leeftijd:</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: filters.leeftijden.length === 3 ? KLEUREN.tekst : KLEUREN.matig }}>
+                  {filters.leeftijden.length === 3 ? 'Alle' : filters.leeftijden.join(', ')}
+                </span>
+              </div>
+              
+              {/* Geslacht */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', backgroundColor: KLEUREN.wit, padding: '3px 8px', borderRadius: '5px', border: `1px solid ${filters.geslachten.length === 2 ? KLEUREN.rand : KLEUREN.matig}` }}>
+                <span style={{ fontSize: '9px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Geslacht:</span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: filters.geslachten.length === 2 ? KLEUREN.tekst : KLEUREN.matig }}>
+                  {filters.geslachten.length === 2 ? 'M+V' : filters.geslachten[0]}
+                </span>
+              </div>
             </div>
             
-            {/* Jaren */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.jaren.length === JAREN.length ? KLEUREN.rand : KLEUREN.matig}` }}>
-              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Jaar:</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.jaren.length === JAREN.length ? KLEUREN.tekst : KLEUREN.matig }}>
-                {filters.jaren.length === JAREN.length ? 'Alle' : filters.jaren.length === 1 ? filters.jaren[0] : filters.jaren.sort().join(', ')}
-              </span>
+            {/* Resultaat teller */}
+            <div style={{ marginLeft: 'auto', fontSize: '11px', color: KLEUREN.tekstSub }}>
+              <strong style={{ color: KLEUREN.primair }}>{stats.tests.toLocaleString()}</strong> tests
             </div>
-            
-            {/* Maanden */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.maanden.length === 12 ? KLEUREN.rand : KLEUREN.matig}` }}>
-              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Maanden:</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.maanden.length === 12 ? KLEUREN.tekst : KLEUREN.matig }}>
-                {filters.maanden.length === 12 ? 'Alle' : filters.maanden.length === 0 ? 'Geen' : `${filters.maanden.length} van 12`}
-              </span>
-            </div>
-            
-            {/* Leeftijd */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.leeftijden.length === 3 ? KLEUREN.rand : KLEUREN.matig}` }}>
-              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Leeftijd:</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.leeftijden.length === 3 ? KLEUREN.tekst : KLEUREN.matig }}>
-                {filters.leeftijden.length === 3 ? 'Alle' : filters.leeftijden.join(', ')}
-              </span>
-            </div>
-            
-            {/* Geslacht */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: KLEUREN.wit, padding: '4px 10px', borderRadius: '6px', border: `1px solid ${filters.geslachten.length === 2 ? KLEUREN.rand : KLEUREN.matig}` }}>
-              <span style={{ fontSize: '10px', color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Geslacht:</span>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: filters.geslachten.length === 2 ? KLEUREN.tekst : KLEUREN.matig }}>
-                {filters.geslachten.length === 2 ? 'M + V' : filters.geslachten[0]}
-              </span>
-            </div>
-          </div>
-          
-          {/* Resultaat teller */}
-          <div style={{ marginLeft: 'auto', fontSize: '12px', color: KLEUREN.tekstSub }}>
-            <strong style={{ color: KLEUREN.primair }}>{stats.tests.toLocaleString()}</strong> tests van <strong>{stats.inw65plus.toLocaleString()}</strong> inwoners 65+
           </div>
         </div>
+
+        {/* NAVIGATIE */}
+        <nav style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, overflowX: 'auto' }}>
+          <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', paddingLeft: '16px', paddingRight: '16px', minWidth: 'max-content' }}>
+            {[
+              { id: 'overzicht', label: '📊 Overzicht' },
+              { id: 'risico', label: '⚠️ Risicofactoren' },
+              { id: 'actie', label: '💡 Aanbevelingen' },
+              { id: 'preventie', label: '💪 Preventie' },
+              { id: 'demografie', label: '👥 Demografie' },
+              { id: 'kaart', label: '🗺️ Geografisch' },
+              { id: 'fysio', label: '🏥 Fysio-aanmeldingen' },
+            ].map(t => (
+              <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</TabButton>
+            ))}
+          </div>
+        </nav>
       </div>
-
-      {/* NAVIGATIE */}
-      <nav style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, overflowX: 'auto' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', paddingLeft: '16px', paddingRight: '16px', minWidth: 'max-content' }}>
-          {[
-            { id: 'overzicht', label: '📊 Overzicht' },
-            { id: 'risico', label: '⚠️ Risicofactoren' },
-            { id: 'actie', label: '💡 Aanbevelingen' },
-            { id: 'preventie', label: '💪 Preventie' },
-            { id: 'demografie', label: '👥 Demografie' },
-            { id: 'kaart', label: '🗺️ Geografisch' },
-            { id: 'fysio', label: '🏥 Fysio-aanmeldingen' },
-          ].map(t => (
-            <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</TabButton>
-          ))}
-        </div>
-      </nav>
 
       {/* CONTENT */}
       <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '16px' }}>
@@ -1198,6 +1389,7 @@ export default function ValrisicoDashboard() {
               <StatCard label="Laag risico" value={stats.pLaag} unit="%" sub={`${stats.laag} personen`} color={KLEUREN.laag} icon="✓" />
               <StatCard label="Matig risico" value={stats.pMatig} unit="%" sub={`${stats.matig} personen`} color={KLEUREN.matig} icon="⚡" />
               <StatCard label="Hoog risico" value={stats.pHoog} unit="%" sub={`${stats.hoog} personen`} color={KLEUREN.hoog} icon="⚠️" />
+
               <StatCard label="Verhoogd risico" value={stats.matig + stats.hoog} sub="Matig + Hoog" color={KLEUREN.primair} icon="🎯" />
             </div>
 
@@ -1432,34 +1624,36 @@ export default function ValrisicoDashboard() {
               <strong>Preventief gedrag:</strong> De test meet 6 vormen van preventief gedrag. Doel: minimaal 80% past elke maatregel toe.
             </InfoPanel>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
               <Card>
                 <CardTitle sub="Percentage dat de maatregel toepast">Huidige stand</CardTitle>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={[...PREVENTIE].sort((a, b) => a.perc - b.perc)} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke={KLEUREN.rand} />
-                    <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="label" width={180} tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v) => `${v}%`} />
-                    <Bar dataKey="perc" name="Doet dit" fill={KLEUREN.primair} radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <div style={{ width: '100%', overflowX: 'auto' }}>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={[...PREVENTIE].sort((a, b) => a.perc - b.perc)} layout="vertical" margin={{ left: 10, right: 30 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={KLEUREN.rand} />
+                      <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 10 }} />
+                      <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 10 }} />
+                      <Tooltip formatter={(v) => `${v}%`} />
+                      <Bar dataKey="perc" name="Doet dit" fill={KLEUREN.primair} radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </Card>
 
               <Card>
                 <CardTitle sub="Gerangschikt op impact">Prioritering</CardTitle>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {[...PREVENTIE].sort((a, b) => a.perc - b.perc).map((p, i) => (
-                    <div key={p.id} style={{ padding: '14px', backgroundColor: i === 0 ? KLEUREN.hoogLicht : KLEUREN.achtergrond, borderRadius: '8px', borderLeft: `4px solid ${i === 0 ? KLEUREN.hoog : i < 3 ? KLEUREN.matig : KLEUREN.rand}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                        <p style={{ margin: 0, fontWeight: 600, fontSize: '13px', flex: 1 }}>{p.label}</p>
+                    <div key={p.id} style={{ padding: '12px', backgroundColor: i === 0 ? KLEUREN.hoogLicht : KLEUREN.achtergrond, borderRadius: '8px', borderLeft: `4px solid ${i === 0 ? KLEUREN.hoog : i < 3 ? KLEUREN.matig : KLEUREN.rand}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: '12px', flex: 1, minWidth: '150px' }}>{p.label}</p>
                         {i === 0 && <Badge color={KLEUREN.hoog}>PRIORITEIT</Badge>}
                       </div>
-                      <div style={{ display: 'flex', gap: '16px', marginTop: '6px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', gap: '12px', marginTop: '6px', fontSize: '11px', flexWrap: 'wrap' }}>
                         <span><span style={{ color: KLEUREN.tekstSub }}>Gap:</span> <strong style={{ color: KLEUREN.hoog }}>{100 - p.perc}%</strong></span>
                         <span><span style={{ color: KLEUREN.tekstSub }}>Hoog-risico:</span> <strong>{p.hoogRisico}%</strong></span>
                       </div>
-                      <p style={{ margin: '8px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>💡 {p.advies}</p>
+                      <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: KLEUREN.tekstSub }}>💡 {p.advies}</p>
                     </div>
                   ))}
                 </div>
@@ -1605,12 +1799,17 @@ export default function ValrisicoDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...stats.perKern].sort((a, b) => (b.hoog / b.tests) - (a.hoog / a.tests)).map(k => {
+                    {[...stats.perKern].sort((a, b) => {
+                      // Sorteer op % hoog, maar alleen als er tests zijn
+                      const aPerc = a.tests > 0 ? (a.hoog / a.tests) : -1;
+                      const bPerc = b.tests > 0 ? (b.hoog / b.tests) : -1;
+                      return bPerc - aPerc;
+                    }).map(k => {
                       const kernInfo = KERNEN.find(x => x.id === k.kern);
                       const w = WIJKEN.find(x => x.code === kernInfo?.wijk);
                       const bereik = k.inw65plus > 0 ? Math.round((k.tests / k.inw65plus) * 100) : 0;
                       return (
-                        <tr key={k.kern} style={{ borderBottom: `1px solid ${KLEUREN.rand}` }}>
+                        <tr key={k.kern} style={{ borderBottom: `1px solid ${KLEUREN.rand}`, opacity: k.tests === 0 ? 0.5 : 1 }}>
                           <td style={{ padding: '12px 24px', fontWeight: 500 }}>{k.naam}</td>
                           <td style={{ padding: '12px 16px' }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
