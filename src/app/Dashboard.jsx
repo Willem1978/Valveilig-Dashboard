@@ -1296,42 +1296,47 @@ export default function ValrisicoDashboard() {
             <InfoPanel type="info">
               <strong>Toelichting vragenlogica:</strong> De Valrisicotest volgt een beslisboom. Niet iedereen krijgt alle vragen: 
               vraag 2-3 zijn alleen voor niet-vallers, vraag 4-7 alleen voor vallers, vraag 8 alleen bij verhoogd risico. 
-              De percentages zijn berekend over de respondenten die de betreffende vraag daadwerkelijk hebben beantwoord. 
-              Bij elke vraag staat <em>n=X%</em> om aan te geven welk deel van de respondenten deze vraag kreeg.
+              Per vraag zie je: <strong>percentage</strong> (<span style={{ color: KLEUREN.hoog, fontWeight: 600 }}>aantal JA</span> | totaal ondervraagd).
             </InfoPanel>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
               <Card>
-                <CardTitle sub="Percentage van respondenten die de vraag beantwoordden">Prevalentie per risicofactor</CardTitle>
-                {RISICOFACTOREN.map(f => (
-                  <div key={f.id} style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 500, color: KLEUREN.tekst, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>
-                        {f.id}. {f.label}
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                        {f.basisPerc && (
-                          <span style={{ fontSize: '12px', color: KLEUREN.tekstSub, backgroundColor: KLEUREN.achtergrond, padding: '2px 6px', borderRadius: '4px' }}>
-                            n={f.basisPerc}%
-                          </span>
-                        )}
-                        <span style={{ fontSize: '14px', fontWeight: 700, color: f.perc > 50 ? KLEUREN.hoog : f.perc > 30 ? KLEUREN.matig : KLEUREN.primair }}>
-                          {f.perc}%
+                <CardTitle sub="Percentage en aantallen per vraag">Prevalentie per risicofactor</CardTitle>
+                {RISICOFACTOREN.map(f => {
+                  // Bereken aantallen op basis van totaal tests en basisPerc
+                  const totaalTests = stats.tests;
+                  const ondervraagd = f.basisPerc ? Math.round(totaalTests * (f.basisPerc / 100)) : totaalTests;
+                  const aantalJa = Math.round(ondervraagd * (f.perc / 100));
+                  const kleur = f.perc > 50 ? KLEUREN.hoog : f.perc > 30 ? KLEUREN.matig : KLEUREN.primair;
+                  
+                  return (
+                    <div key={f.id} style={{ marginBottom: '18px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: KLEUREN.tekst, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>
+                          {f.id}. {f.label}
                         </span>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexShrink: 0 }}>
+                          <span style={{ fontSize: '15px', fontWeight: 700, color: kleur }}>
+                            {f.perc}%
+                          </span>
+                          <span style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>
+                            (<span style={{ fontWeight: 700, color: kleur }}>{aantalJa}</span> | {ondervraagd})
+                          </span>
+                        </div>
                       </div>
+                      <div style={{ height: '8px', backgroundColor: KLEUREN.achtergrond, borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          width: `${Math.min((f.perc / 100) * 100, 100)}%`, 
+                          height: '100%', 
+                          backgroundColor: kleur, 
+                          borderRadius: '4px', 
+                          transition: 'width 0.3s ease' 
+                        }} />
+                      </div>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: KLEUREN.tekstSub, lineHeight: 1.4 }}>{f.toelichting}</p>
                     </div>
-                    <div style={{ height: '8px', backgroundColor: KLEUREN.achtergrond, borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ 
-                        width: `${Math.min((f.perc / 100) * 100, 100)}%`, 
-                        height: '100%', 
-                        backgroundColor: f.perc > 50 ? KLEUREN.hoog : f.perc > 30 ? KLEUREN.matig : KLEUREN.primair, 
-                        borderRadius: '4px', 
-                        transition: 'width 0.3s ease' 
-                      }} />
-                    </div>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub, lineHeight: 1.4 }}>{f.toelichting}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </Card>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
