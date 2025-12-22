@@ -1342,18 +1342,65 @@ export default function ValrisicoDashboard() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 <Card>
                   <CardTitle sub="Vergelijking leeftijdsgroepen">Risicoprofiel per leeftijd</CardTitle>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <RadarChart data={RISICOFACTOREN.slice(0, 6).map(f => ({ factor: f.label.substring(0, 10), '65-74': f.l65, '75-84': f.l75, '85+': f.l85 }))}>
-                      <PolarGrid stroke={KLEUREN.rand} />
-                      <PolarAngleAxis dataKey="factor" tick={{ fontSize: 9 }} />
-                      <PolarRadiusAxis domain={[0, 60]} tick={{ fontSize: 8 }} />
-                      <Radar name="65-74" dataKey="65-74" stroke={KLEUREN.laag} fill={KLEUREN.laag} fillOpacity={0.2} />
-                      <Radar name="75-84" dataKey="75-84" stroke={KLEUREN.matig} fill={KLEUREN.matig} fillOpacity={0.2} />
-                      <Radar name="85+" dataKey="85+" stroke={KLEUREN.hoog} fill={KLEUREN.hoog} fillOpacity={0.2} />
-                      <Legend wrapperStyle={{ fontSize: '12px' }} />
-                      <Tooltip />
-                    </RadarChart>
-                  </ResponsiveContainer>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: `2px solid ${KLEUREN.rand}`, fontWeight: 600, color: KLEUREN.tekstSub }}>Risicofactor</th>
+                          <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: `2px solid ${KLEUREN.rand}`, fontWeight: 600, color: KLEUREN.laag, minWidth: '70px' }}>65-74</th>
+                          <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: `2px solid ${KLEUREN.rand}`, fontWeight: 600, color: KLEUREN.matig, minWidth: '70px' }}>75-84</th>
+                          <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: `2px solid ${KLEUREN.rand}`, fontWeight: 600, color: KLEUREN.hoog, minWidth: '70px' }}>85+</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {RISICOFACTOREN.map((f, idx) => {
+                          const getKleur = (waarde) => {
+                            if (waarde >= 50) return { bg: KLEUREN.hoogLicht, tekst: KLEUREN.hoog };
+                            if (waarde >= 35) return { bg: KLEUREN.matigLicht, tekst: KLEUREN.matig };
+                            return { bg: KLEUREN.laagLicht, tekst: KLEUREN.laag };
+                          };
+                          const k65 = getKleur(f.l65);
+                          const k75 = getKleur(f.l75);
+                          const k85 = getKleur(f.l85);
+                          
+                          return (
+                            <tr key={f.id} style={{ borderBottom: `1px solid ${KLEUREN.rand}` }}>
+                              <td style={{ padding: '10px 12px', fontWeight: 500, color: KLEUREN.tekst }}>{f.label}</td>
+                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                                <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: '6px', backgroundColor: k65.bg, color: k65.tekst, fontWeight: 700, minWidth: '45px' }}>
+                                  {f.l65}%
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                                <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: '6px', backgroundColor: k75.bg, color: k75.tekst, fontWeight: 700, minWidth: '45px' }}>
+                                  {f.l75}%
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'center' }}>
+                                <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: '6px', backgroundColor: k85.bg, color: k85.tekst, fontWeight: 700, minWidth: '45px' }}>
+                                  {f.l85}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px', marginTop: '12px', justifyContent: 'center', fontSize: '11px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', backgroundColor: KLEUREN.laagLicht, border: `1px solid ${KLEUREN.laag}` }}></span>
+                      <span style={{ color: KLEUREN.tekstSub }}>&lt; 35%</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', backgroundColor: KLEUREN.matigLicht, border: `1px solid ${KLEUREN.matig}` }}></span>
+                      <span style={{ color: KLEUREN.tekstSub }}>35-49%</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', backgroundColor: KLEUREN.hoogLicht, border: `1px solid ${KLEUREN.hoog}` }}></span>
+                      <span style={{ color: KLEUREN.tekstSub }}>≥ 50%</span>
+                    </div>
+                  </div>
                 </Card>
 
                 <Card>
