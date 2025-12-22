@@ -2,35 +2,50 @@ import React, { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, LineChart, Line } from 'recharts';
 
 // =============================================================================
-// KLEURENPALET - Geoptimaliseerd voor leesbaarheid (WCAG AA contrast)
+// ZLIMTHUIS HUISSTIJL - "Veilig wonen begint met inzicht"
 // =============================================================================
+const ZLIMTHUIS_LOGO = 'https://www.zlimthuis.nl/media/n5cpu0o3/logo-zlimthuis-2021-nieuwe-pay-off-rgb.png';
+
 const KLEUREN = {
-  primair: '#0D6560',       // Iets donkerder teal voor beter contrast
-  primairLicht: '#CCFBF1',
+  // Zlimthuis primaire kleuren
+  primair: '#0D6560',       // Zlimthuis teal/groen
+  primairDonker: '#095450', // Donkerdere variant voor hover
+  primairLicht: '#E6F7F5',  // Lichtere tint voor achtergronden
   
-  laag: '#15803D',          // Donkerder groen
+  // Risico kleuren (behouden voor duidelijkheid)
+  laag: '#15803D',          // Groen - laag risico
   laagLicht: '#DCFCE7',
-  matig: '#C2410C',         // Donkerder oranje
-  matigLicht: '#FED7AA',
-  hoog: '#B91C1C',          // Donkerder rood
+  matig: '#D97706',         // Oranje/amber - matig risico
+  matigLicht: '#FEF3C7',
+  hoog: '#DC2626',          // Rood - hoog risico
   hoogLicht: '#FEE2E2',
   
+  // Neutrale kleuren
   achtergrond: '#F8FAFC',
   wit: '#FFFFFF',
-  rand: '#CBD5E1',          // Iets donkerder voor betere zichtbaarheid
+  rand: '#E2E8F0',
   
-  tekst: '#0F172A',         // Zeer donker - hoofdtekst
-  tekstSub: '#334155',      // Donkerder dan voorheen (was #475569)
-  tekstLicht: '#64748B',    // Donkerder dan voorheen (was #94A3B8)
+  // Tekst kleuren
+  tekst: '#1E293B',
+  tekstSub: '#475569',
+  tekstLicht: '#64748B',
   
-  wijk1: '#2563EB',         // Donkerder blauw
-  wijk2: '#16A34A',         // Donkerder groen
-  wijk3: '#D97706',         // Donkerder amber
-  wijk4: '#9333EA',         // Donkerder paars
+  // Wijk kleuren (zachter, meer in lijn met Zlimthuis)
+  wijk1: '#0D6560',         // Primair teal
+  wijk2: '#2563EB',         // Blauw
+  wijk3: '#7C3AED',         // Paars
+  wijk4: '#059669',         // Emerald groen
   
+  // Fysio kleuren
   fysioA: '#6366F1',
   fysioB: '#14B8A6',
   fysioC: '#F97316',
+  
+  // Accent kleuren
+  accent: '#0EA5E9',        // Licht blauw voor links/accenten
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
 };
 
 const MAANDEN = [
@@ -271,26 +286,40 @@ const PREVENTIE = [
 ];
 
 // =============================================================================
-// BASIS COMPONENTEN
+// BASIS COMPONENTEN - Zlimthuis styling
 // =============================================================================
 
-const Card = ({ children, padding = true }) => (
+const Card = ({ children, padding = true, highlight = false }) => (
   <div style={{
     backgroundColor: KLEUREN.wit,
     borderRadius: '12px',
-    border: `1px solid ${KLEUREN.rand}`,
+    border: highlight ? `2px solid ${KLEUREN.primair}` : `1px solid ${KLEUREN.rand}`,
     padding: padding ? '24px' : '0',
     height: '100%',
     boxSizing: 'border-box',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02)',
+    transition: 'box-shadow 0.2s ease',
   }}>
     {children}
   </div>
 );
 
-const CardTitle = ({ children, sub }) => (
-  <div style={{ marginBottom: '16px' }}>
-    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: KLEUREN.tekst }}>{children}</h3>
-    {sub && <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: KLEUREN.tekstSub }}>{sub}</p>}
+const CardTitle = ({ children, sub, icon }) => (
+  <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+    {icon && (
+      <div style={{ 
+        width: '36px', height: '36px', borderRadius: '8px', 
+        backgroundColor: KLEUREN.primairLicht, 
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '18px', flexShrink: 0
+      }}>
+        {icon}
+      </div>
+    )}
+    <div>
+      <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: KLEUREN.tekst }}>{children}</h3>
+      {sub && <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: KLEUREN.tekstSub }}>{sub}</p>}
+    </div>
   </div>
 );
 
@@ -1113,12 +1142,14 @@ export default function ValrisicoDashboard() {
         return;
       }
       
-      w.document.write('<html><head><meta charset="UTF-8"><title>Valrisico Rapport</title>');
+      w.document.write('<html><head><meta charset="UTF-8"><title>Valrisico Rapport - Zlimthuis</title>');
       w.document.write('<style>');
       w.document.write('@page{size:A4;margin:15mm}*{box-sizing:border-box;margin:0;padding:0}');
       w.document.write('body{font-family:Arial,sans-serif;font-size:10pt;line-height:1.4;color:#1e293b;padding:20px}');
       w.document.write('.page{page-break-after:always;padding-bottom:20px}.page:last-child{page-break-after:avoid}');
-      w.document.write('.header{background:#0D6560;color:white;padding:15px 20px;margin-bottom:15px;border-radius:8px}');
+      w.document.write('.header{background:#0D6560;color:white;padding:15px 20px;margin-bottom:15px;border-radius:8px;display:flex;align-items:center;justify-content:space-between}');
+      w.document.write('.header-left{display:flex;align-items:center;gap:15px}');
+      w.document.write('.header img{height:40px;background:white;padding:5px 10px;border-radius:6px}');;
       w.document.write('.header h1{font-size:18pt;margin-bottom:3px}.header p{font-size:9pt;opacity:0.9}');
       w.document.write('.section{margin-bottom:15px}.section-title{font-size:12pt;font-weight:bold;color:#0D6560;border-bottom:2px solid #0D6560;padding-bottom:4px;margin-bottom:10px}');
       w.document.write('.kpi-grid{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}');
@@ -1142,18 +1173,24 @@ export default function ValrisicoDashboard() {
       w.document.write('</style></head><body>');
       
       // Print button
-      w.document.write('<div class="no-print" style="text-align:center;padding:15px;background:#f0f0f0;margin-bottom:20px;border-radius:8px">');
+      w.document.write('<div class="no-print" style="text-align:center;padding:15px;background:#E6F7F5;margin-bottom:20px;border-radius:8px;border:1px solid #0D6560">');
       w.document.write('<button class="print-btn" onclick="window.print()">🖨️ Afdrukken / Opslaan als PDF</button>');
       w.document.write('<button class="print-btn" style="background:#666" onclick="window.close()">✕ Sluiten</button>');
       w.document.write('</div>');
       
       // PAGINA 1
       w.document.write('<div class="page">');
-      w.document.write('<div class="header"><h1>📋 Valrisico Rapport</h1><p>Gemeente Oude IJsselstreek • ' + currentDate + '</p></div>');
+      w.document.write('<div class="header">');
+      w.document.write('<div class="header-left">');
+      w.document.write('<img src="' + ZLIMTHUIS_LOGO + '" alt="Zlimthuis" onerror="this.style.display=\'none\'"/>');
+      w.document.write('<div><h1 style="font-size:18pt;margin:0">Valrisico Rapport</h1><p style="margin:3px 0 0 0;font-size:9pt;opacity:0.9">Gemeente Oude IJsselstreek</p></div>');
+      w.document.write('</div>');
+      w.document.write('<div style="text-align:right;font-size:9pt;opacity:0.9">' + currentDate + '</div>');
+      w.document.write('</div>');
       
       w.document.write('<div class="leeswijzer"><h3>📖 Leeswijzer</h3>');
-      w.document.write('<p style="margin-bottom:8px;font-size:9pt">Dit rapport geeft een samenvatting van de valrisico-analyse voor 65-plussers.</p>');
-      w.document.write('<ul><li><b>Pagina 1:</b> Leeswijzer en begrippen</li><li><b>Pagina 2:</b> Kerncijfers</li><li><b>Pagina 3:</b> Aanbevelingen</li></ul></div>');
+      w.document.write('<p style="margin-bottom:8px;font-size:9pt">Dit rapport geeft een samenvatting van de valrisico-analyse voor 65-plussers, gebaseerd op de VeiligheidNL Valrisicotest.</p>');
+      w.document.write('<ul><li><b>Pagina 1:</b> Leeswijzer en begrippen</li><li><b>Pagina 2:</b> Kerncijfers en risicoverdeling</li><li><b>Pagina 3:</b> Aanbevelingen en actiepunten</li></ul></div>');
       
       w.document.write('<div class="section"><div class="section-title">Begrippen</div>');
       w.document.write('<table><tr><th style="width:25%">Begrip</th><th>Uitleg</th></tr>');
@@ -1166,7 +1203,7 @@ export default function ValrisicoDashboard() {
       w.document.write('<div class="filter-box"><b>Filters:</b> Wijk: ' + wijkNaam + ' | Jaren: ' + jarenTekst + ' | Leeftijd: ' + leeftijdTekst + ' | Geslacht: ' + geslachtTekst + '</div>');
       w.document.write('<p style="font-size:9pt">Gebaseerd op <b>' + stats.tests.toLocaleString() + '</b> tests onder <b>' + stats.inw65plus.toLocaleString() + '</b> inwoners 65+ (bereik: ' + stats.bereik + '%).</p></div>');
       
-      w.document.write('<div class="footer">Valrisico Dashboard • Pagina 1 van 3</div></div>');
+      w.document.write('<div class="footer">Zlimthuis • Valrisico Dashboard • Pagina 1 van 3</div></div>');
       
       // PAGINA 2
       w.document.write('<div class="page">');
@@ -1210,35 +1247,41 @@ export default function ValrisicoDashboard() {
         w.document.write('</table></div>');
       }
       
-      w.document.write('<div class="footer">Valrisico Dashboard • Pagina 2 van 3</div></div>');
+      w.document.write('<div class="footer">Zlimthuis • Valrisico Dashboard • Pagina 2 van 3</div></div>');
       
       // PAGINA 3
       w.document.write('<div class="page">');
       w.document.write('<div class="section"><div class="section-title">Aanbevelingen</div>');
-      w.document.write('<div class="insight-box insight-red"><b>🎯 Prioriteit 1: Beweegprogramma\'s</b><br>Slechts ' + preventiePerc + '% doet evenwichtsoefeningen.</div>');
-      w.document.write('<div class="insight-box"><b>🏠 Prioriteit 2: Woningchecks</b><br>' + woningPerc + '% heeft geen huisaanpassingen gedaan.</div>');
-      w.document.write('<div class="insight-box"><b>🏥 Prioriteit 3: Fysio-doorverwijzing</b><br>Verbeter doorverwijzing door huisarts.</div></div>');
+      w.document.write('<div class="insight-box insight-red"><b>🎯 Prioriteit 1: Beweegprogramma\'s</b><br>Slechts ' + preventiePerc + '% doet evenwichtsoefeningen. Adviseer cursussen zoals "In Balans" of thuisoefenprogramma\'s.</div>');
+      w.document.write('<div class="insight-box"><b>🏠 Prioriteit 2: Thuisscan aanvragen</b><br>' + woningPerc + '% heeft geen huisaanpassingen gedaan. Adviseer een gratis Zlimthuis Thuisscan voor persoonlijk advies.</div>');
+      w.document.write('<div class="insight-box"><b>🏥 Prioriteit 3: Fysio-doorverwijzing</b><br>Verbeter doorverwijzing door huisarts naar fysiotherapeut voor valpreventietraining.</div></div>');
       
       w.document.write('<div class="section"><div class="section-title">Doelgroepen</div><table>');
       w.document.write('<tr><th>Doelgroep</th><th>Aanpak</th><th>Prio</th></tr>');
-      w.document.write('<tr><td>85+ jarigen</td><td>Huisbezoeken, coaching</td><td><span class="badge badge-red">Hoog</span></td></tr>');
-      w.document.write('<tr><td>Recidiverende vallers</td><td>Multidisciplinair team</td><td><span class="badge badge-red">Hoog</span></td></tr>');
-      w.document.write('<tr><td>Matig risico</td><td>Groepscursussen</td><td><span class="badge badge-orange">Matig</span></td></tr>');
-      w.document.write('<tr><td>Laag risico</td><td>Voorlichting</td><td><span class="badge badge-green">Laag</span></td></tr>');
+      w.document.write('<tr><td>85+ jarigen</td><td>Huisbezoeken, Thuisscan aan Huis</td><td><span class="badge badge-red">Hoog</span></td></tr>');
+      w.document.write('<tr><td>Recidiverende vallers</td><td>Multidisciplinair valteam</td><td><span class="badge badge-red">Hoog</span></td></tr>');
+      w.document.write('<tr><td>Matig risico</td><td>Groepscursussen, online Thuisscan</td><td><span class="badge badge-orange">Matig</span></td></tr>');
+      w.document.write('<tr><td>Laag risico</td><td>Preventieve voorlichting</td><td><span class="badge badge-green">Laag</span></td></tr>');
       w.document.write('</table></div>');
       
       w.document.write('<div class="section"><div class="section-title">KPI\'s</div><ul>');
       w.document.write('<li>Percentage hoog risico: doel daling van ' + stats.pHoog + '% naar 25%</li>');
-      w.document.write('<li>Bereik valrisicotest: doel stijging van ' + stats.bereik + '% naar 15%</li>');
-      w.document.write('<li>Deelname beweegprogramma\'s: doel 50% van hoog-risico</li></ul></div>');
+      w.document.write('<li>Bereik valrisicotest: doel stijging van ' + stats.bereik + '% naar 40%</li>');
+      w.document.write('<li>Deelname beweegprogramma\'s: doel 50% van hoog-risico groep</li>');
+      w.document.write('<li>Thuisscans uitgevoerd: doel 200 per jaar</li></ul></div>');
       
       w.document.write('<div class="section"><div class="section-title">Vervolgstappen</div><ol>');
-      w.document.write('<li>Presenteer bevindingen aan stakeholders</li>');
+      w.document.write('<li>Presenteer bevindingen aan stakeholders (welzijn, zorg, WMO)</li>');
       w.document.write('<li>Stel werkgroep valpreventie samen</li>');
-      w.document.write('<li>Ontwikkel communicatiecampagne</li>');
-      w.document.write('<li>Plan evaluatie over 12 maanden</li></ol></div>');
+      w.document.write('<li>Ontwikkel communicatiecampagne gericht op 65-plussers</li>');
+      w.document.write('<li>Plan evaluatiemoment over 12 maanden</li></ol></div>');
       
-      w.document.write('<div class="footer">Valrisico Dashboard • Pagina 3 van 3</div></div>');
+      w.document.write('<div class="section" style="background:#E6F7F5;padding:15px;border-radius:8px;margin-top:20px">');
+      w.document.write('<p style="margin:0;font-size:9pt"><b>Over Zlimthuis:</b> Zlimthuis helpt ouderen om veilig en zelfstandig thuis te blijven wonen. ');
+      w.document.write('Met de Thuisscan krijgt u persoonlijk advies over woningaanpassingen en hulpmiddelen. ');
+      w.document.write('Meer informatie: <b>zlimthuis.nl</b> | Tel: 088 - 17 17 370</p></div>');
+      
+      w.document.write('<div class="footer">Zlimthuis • Valrisico Dashboard • Pagina 3 van 3</div></div>');
       
       w.document.write('</body></html>');
       w.document.close();
@@ -1257,17 +1300,22 @@ export default function ValrisicoDashboard() {
         {/* HEADER */}
         <header style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, padding: '10px 16px' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: KLEUREN.primair, display: 'flex', alignItems: 'center', justifyContent: 'center', color: KLEUREN.wit, fontSize: '14px', flexShrink: 0 }}>🛡️</div>
-              <div>
-                <h1 style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>Valrisico Dashboard</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <img 
+                src={ZLIMTHUIS_LOGO} 
+                alt="Zlimthuis" 
+                style={{ height: '36px', width: 'auto' }}
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+              <div style={{ borderLeft: `1px solid ${KLEUREN.rand}`, paddingLeft: '12px' }}>
+                <h1 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: KLEUREN.tekst }}>Valrisico Dashboard</h1>
                 <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
               </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
-                style={{ padding: '5px 24px 5px 8px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '11px', color: KLEUREN.tekst, cursor: 'pointer' }}>
+                style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '12px', color: KLEUREN.tekst, cursor: 'pointer' }}>
                 <option value="alle">Alle wijken</option>
                 {WIJKEN.map(w => <option key={w.code} value={w.code}>{w.naam}</option>)}
               </select>
@@ -1278,14 +1326,15 @@ export default function ValrisicoDashboard() {
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: '6px', 
-                  padding: '6px 14px', 
+                  padding: '7px 16px', 
                   borderRadius: '6px', 
                   border: 'none', 
                   backgroundColor: KLEUREN.primair, 
                   color: KLEUREN.wit, 
-                  fontSize: '11px', 
+                  fontSize: '12px', 
                   fontWeight: 600,
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
                 }}
               >
                 🖨️ PDF Rapport
@@ -1899,10 +1948,17 @@ export default function ValrisicoDashboard() {
       </main>
 
       {/* FOOTER */}
-      <footer style={{ backgroundColor: KLEUREN.wit, borderTop: `1px solid ${KLEUREN.rand}`, padding: '12px 16px', marginTop: '20px' }}>
-        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: KLEUREN.tekstSub, flexWrap: 'wrap', gap: '8px' }}>
-          <span>Valrisico Dashboard • Gemeente Oude IJsselstreek • VeiligheidNL</span>
-          <span>Data is geanonimiseerd • 2024</span>
+      <footer style={{ backgroundColor: KLEUREN.wit, borderTop: `1px solid ${KLEUREN.rand}`, padding: '16px', marginTop: '24px' }}>
+        <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: KLEUREN.tekstSub, flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <img src={ZLIMTHUIS_LOGO} alt="Zlimthuis" style={{ height: '24px' }} onError={(e) => { e.target.style.display = 'none'; }} />
+            <span>Valrisico Dashboard • Gemeente Oude IJsselstreek</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span>Gebaseerd op VeiligheidNL Valrisicotest</span>
+            <span style={{ color: KLEUREN.rand }}>|</span>
+            <a href="https://zlimthuis.nl" target="_blank" rel="noopener noreferrer" style={{ color: KLEUREN.primair, textDecoration: 'none' }}>zlimthuis.nl</a>
+          </div>
         </div>
       </footer>
     </div>
