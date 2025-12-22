@@ -175,49 +175,70 @@ const FYSIO_DATA = [
   { id: 'fysioC', naam: 'Fysio C', kleur: KLEUREN.fysioC, kern: 'K01', locatie: 'Varsseveld' },
 ];
 
-// Simpele aanmeldingen data - alleen aantal per fysio per maand per jaar
-const genereerFysioAanmeldingen = () => {
-  const aanmeldingen = [];
+// =============================================================================
+// HOOG RISICO DATA PER JAAR/MAAND (voor synchrone filtering met aanmeldingen)
+// =============================================================================
+// Deze data representeert het aantal hoog-risico personen per maand/jaar
+// Dit maakt correcte conversieberekeningen mogelijk ongeacht filterinstellingen
+const genereerHoogRisicoPerMaand = () => {
+  const hoogRisicoData = [];
   
-  // Bereken totaal verwacht hoog risico per jaar (gebaseerd op testdata patronen)
-  // Totaal hoog risico over alle jaren is ~35% van ~1847 tests = ~646 personen
-  // Per jaar: 2023: ~180, 2024: ~280, 2025: ~186
+  // Totaal hoog risico per jaar (gebaseerd op testdata patronen)
   const hoogRisicoPerJaar = { 2023: 180, 2024: 280, 2025: 186 };
-  const doelConversie = 0.40; // 40% van hoog risico meldt zich aan
+  
+  // Seizoenspatroon: meer tests in herfst (Week tegen Vallen), minder in zomer
+  const maandFactoren = MAANDEN.map(m => {
+    if ([9, 10, 11].includes(m.id)) return 1.4; // Herfst: piek
+    if ([7, 8].includes(m.id)) return 0.6; // Zomer: dip
+    if ([12, 1, 2].includes(m.id)) return 0.9; // Winter: iets lager
+    return 1.0;
+  });
+  const totaalFactor = maandFactoren.reduce((s, f) => s + f, 0);
   
   JAREN.forEach(jaar => {
-    const jaarHoogRisico = hoogRisicoPerJaar[jaar] || 200;
-    const jaarAanmeldingen = Math.round(jaarHoogRisico * doelConversie);
-    
-    // Verdeel over maanden (seizoenspatroon)
-    const maandFactoren = MAANDEN.map(m => {
-      if ([9, 10, 11].includes(m.id)) return 1.4; // Herfst: hogere participatie
-      if ([7, 8].includes(m.id)) return 0.6; // Zomer: lagere participatie
-      if ([12, 1, 2].includes(m.id)) return 0.9; // Winter: iets lager
-      return 1.0;
-    });
-    const totaalFactor = maandFactoren.reduce((s, f) => s + f, 0);
+    const jaarTotaal = hoogRisicoPerJaar[jaar] || 200;
     
     MAANDEN.forEach((maand, idx) => {
       if (jaar === 2025 && maand.id > 11) return; // Tot en met november 2025
       
       const maandAandeel = maandFactoren[idx] / totaalFactor;
-      const maandTotaal = Math.round(jaarAanmeldingen * maandAandeel);
+      const aantal = Math.round(jaarTotaal * maandAandeel);
       
-      // Verdeel over fysio's: A=45%, B=32%, C=23%
-      const fysioVerdeling = { fysioA: 0.45, fysioB: 0.32, fysioC: 0.23 };
+      hoogRisicoData.push({
+        jaar,
+        maand: maand.id,
+        aantal,
+      });
+    });
+  });
+  
+  return hoogRisicoData;
+};
+
+const HOOG_RISICO_PER_MAAND = genereerHoogRisicoPerMaand();
+
+// Simpele aanmeldingen data - alleen aantal per fysio per maand per jaar
+// Aanmeldingen zijn ~40% van hoog risico (realistische conversie)
+const genereerFysioAanmeldingen = () => {
+  const aanmeldingen = [];
+  const doelConversie = 0.40; // 40% van hoog risico meldt zich aan
+  
+  HOOG_RISICO_PER_MAAND.forEach(hr => {
+    const maandAanmeldingen = Math.round(hr.aantal * doelConversie);
+    
+    // Verdeel over fysio's: A=45%, B=32%, C=23%
+    const fysioVerdeling = { fysioA: 0.45, fysioB: 0.32, fysioC: 0.23 };
+    
+    FYSIO_DATA.forEach(fysio => {
+      const basisAantal = Math.round(maandAanmeldingen * fysioVerdeling[fysio.id]);
+      // Kleine random variatie (-1 tot +1)
+      const aantal = Math.max(0, basisAantal + Math.floor(Math.random() * 3) - 1);
       
-      FYSIO_DATA.forEach(fysio => {
-        const basisAantal = Math.round(maandTotaal * fysioVerdeling[fysio.id]);
-        // Kleine random variatie (-1 tot +1)
-        const aantal = Math.max(0, basisAantal + Math.floor(Math.random() * 3) - 1);
-        
-        aanmeldingen.push({
-          fysio: fysio.id,
-          jaar,
-          maand: maand.id,
-          aantal,
-        });
+      aanmeldingen.push({
+        fysio: fysio.id,
+        jaar: hr.jaar,
+        maand: hr.maand,
+        aantal,
       });
     });
   });
@@ -623,18 +644,33 @@ const FilterPanel = ({ filters, setFilters }) => {
 // =============================================================================
 // FYSIO COMPONENT - Alleen bekende data
 // =============================================================================
-const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
+const FysioAanmeldingenPanel = ({ filters }) => {
   const [selectedFysio, setSelectedFysio] = useState(null);
   
-  // Filter aanmeldingen op geselecteerde jaren en maanden
-  const gefilterdAanmeldingen = useMemo(() => {
-    return FYSIO_AANMELDINGEN.filter(a => 
+  // Filter BEIDE datasets op dezelfde jaren en maanden voor synchrone berekening
+  const { gefilterdAanmeldingen, gefilterdHoogRisico } = useMemo(() => {
+    const aanmeldingen = FYSIO_AANMELDINGEN.filter(a => 
       filters.jaren.includes(a.jaar) &&
       filters.maanden.includes(a.maand)
     );
+    
+    const hoogRisico = HOOG_RISICO_PER_MAAND.filter(hr =>
+      filters.jaren.includes(hr.jaar) &&
+      filters.maanden.includes(hr.maand)
+    );
+    
+    return { 
+      gefilterdAanmeldingen: aanmeldingen, 
+      gefilterdHoogRisico: hoogRisico 
+    };
   }, [filters.jaren, filters.maanden]);
   
-  // Totalen berekenen
+  // Totaal hoog risico in dezelfde selectie
+  const totaalHoogRisico = useMemo(() => {
+    return gefilterdHoogRisico.reduce((sum, hr) => sum + hr.aantal, 0);
+  }, [gefilterdHoogRisico]);
+  
+  // Totalen aanmeldingen berekenen
   const totalen = useMemo(() => {
     const perFysio = FYSIO_DATA.map(f => ({
       ...f,
@@ -644,9 +680,8 @@ const FysioAanmeldingenPanel = ({ filters, totaalHoogRisico }) => {
     return { perFysio, totaalAanmeldingen };
   }, [gefilterdAanmeldingen]);
   
-  // Aanmeldingspercentage: percentage van hoog risico dat zich heeft aangemeld
-  // Dit kan nooit hoger zijn dan 100% (je kan niet meer aanmelden dan er hoog risico zijn)
-  const aanmeldingsPercentage = totaalHoogRisico > 0 ? Math.min(100, Math.round((totalen.totaalAanmeldingen / totaalHoogRisico) * 100)) : 0;
+  // Nu worden beide op dezelfde manier gefilterd, dus conversie is altijd correct
+  const aanmeldingsPercentage = totaalHoogRisico > 0 ? Math.round((totalen.totaalAanmeldingen / totaalHoogRisico) * 100) : 0;
   const doelPercentage = 40; // Doel is 40% conversie
   const voortgangNaarDoel = doelPercentage > 0 ? Math.min(100, Math.round((aanmeldingsPercentage / doelPercentage) * 100)) : 0;
   const nogTeBereiken = Math.max(0, Math.round(totaalHoogRisico * (doelPercentage / 100)) - totalen.totaalAanmeldingen);
@@ -1839,7 +1874,7 @@ export default function ValrisicoDashboard() {
               Hieronder ziet u het totaal aantal hoog-risico personen en hoeveel zich hebben aangemeld.
             </InfoPanel>
             
-            <FysioAanmeldingenPanel filters={filters} totaalHoogRisico={stats.hoog} />
+            <FysioAanmeldingenPanel filters={filters} />
           </div>
         )}
 
