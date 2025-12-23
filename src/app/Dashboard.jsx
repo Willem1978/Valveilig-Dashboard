@@ -1,20 +1,16 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, LineChart, Line } from 'recharts';
 
 // =============================================================================
 // ZLIMTHUIS HUISSTIJL - "Veilig wonen begint met inzicht"
 // =============================================================================
 
-// Google Fonts - Nunito laden
-const loadNunitoFont = () => {
-  if (typeof document !== 'undefined' && !document.getElementById('nunito-font')) {
-    const link = document.createElement('link');
-    link.id = 'nunito-font';
-    link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap';
-    document.head.appendChild(link);
-  }
-};
+// Google Fonts - Nunito laden via style tag
+const FontLoader = () => (
+  <style>
+    {`@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');`}
+  </style>
+);
 
 const ZLIMTHUIS_LOGO = 'https://www.zlimthuis.nl/media/n5cpu0o3/logo-zlimthuis-2021-nieuwe-pay-off-rgb.png';
 
@@ -1229,11 +1225,6 @@ export default function ValrisicoDashboard() {
     geslachten: ['Man', 'Vrouw'],
   });
 
-  // Laad Nunito font bij mount
-  useEffect(() => {
-    loadNunitoFont();
-  }, []);
-
   const gefilterdData = useMemo(() => {
     return TESTDATA.filter(d => 
       filters.jaren.includes(d.jaar) &&
@@ -2009,7 +2000,9 @@ export default function ValrisicoDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: FONT_FAMILY, color: KLEUREN.tekst, overflow: 'auto' }}>
+    <>
+      <FontLoader />
+      <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: FONT_FAMILY, color: KLEUREN.tekst, overflow: 'auto' }}>
       
       {/* STICKY HEADER WRAPPER */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: KLEUREN.wit, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
@@ -3518,5 +3511,6 @@ export default function ValrisicoDashboard() {
         </div>
       </footer>
     </div>
+    </>
   );
 }
