@@ -1,16 +1,31 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, LineChart, Line } from 'recharts';
 
 // =============================================================================
 // ZLIMTHUIS HUISSTIJL - "Veilig wonen begint met inzicht"
 // =============================================================================
+
+// Google Fonts - Nunito laden
+const loadNunitoFont = () => {
+  if (typeof document !== 'undefined' && !document.getElementById('nunito-font')) {
+    const link = document.createElement('link');
+    link.id = 'nunito-font';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap';
+    document.head.appendChild(link);
+  }
+};
+
 const ZLIMTHUIS_LOGO = 'https://www.zlimthuis.nl/media/n5cpu0o3/logo-zlimthuis-2021-nieuwe-pay-off-rgb.png';
 
 const KLEUREN = {
   // Zlimthuis primaire kleuren
   primair: '#0D6560',       // Zlimthuis teal/groen
   primairDonker: '#095450', // Donkerdere variant voor hover
-  primairLicht: '#E6F7F5',  // Lichtere tint voor achtergronden
+  primairLicht: '#E8E6D9',  // Zlimthuis beige/olijf achtergrond (zoals reviews)
+  
+  // Alternatieve lichte achtergronden
+  achtergrondAccent: '#F5F4EF',  // Zeer subtiel warm voor grote vlakken
   
   // Risico kleuren (behouden voor duidelijkheid)
   laag: '#15803D',          // Groen - laag risico
@@ -47,6 +62,9 @@ const KLEUREN = {
   warning: '#F59E0B',
   error: '#EF4444',
 };
+
+// Zlimthuis lettertype (Nunito - afgeronde sans-serif)
+const FONT_FAMILY = "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 
 const MAANDEN = [
   { id: 1, kort: 'Jan', naam: 'Januari' },
@@ -101,46 +119,124 @@ const genereerTestData = () => {
   const data = [];
   let id = 1;
   
+  // Wijk-specifieke BEREIK factoren (hoeveel % van inwoners doet test)
+  // Dit zorgt voor verschillen in bereik per wijk
+  const wijkBereikFactor = {
+    'WK150900': 1.15,  // Varsseveld - actieve wijk, hoger bereik
+    'WK150901': 0.85,  // Silvolde-Terborg - lager bereik
+    'WK150902': 1.25,  // Ulft-Etten - zeer actief, hoogste bereik
+    'WK150903': 0.75,  // Overig Gendringen - verspreid, moeilijker te bereiken
+  };
+  
+  // Wijk-specifieke RISICO factoren (hoe hoog is valrisico)
+  const wijkRisicoFactor = {
+    'WK150900': 0.92,  // Varsseveld - lager risico (jongere populatie)
+    'WK150901': 1.08,  // Silvolde-Terborg - hoger risico
+    'WK150902': 1.15,  // Ulft-Etten - hoogste risico (oudere populatie)
+    'WK150903': 0.95,  // Overig Gendringen - gemiddeld
+  };
+  
+  // Kern-specifieke variatie voor BEREIK
+  const kernBereikVariatie = {
+    'K01': 1.10, 'K02': 0.85, 'K03': 0.75, 'K04': 1.20, 'K05': 0.90,
+    'K06': 0.70, 'K07': 0.65, 'K08': 1.30, 'K09': 1.05, 'K10': 0.80,
+    'K11': 0.60, 'K12': 0.95, 'K13': 1.15, 'K14': 0.88, 'K15': 0.55,
+  };
+  
+  // Kern-specifieke variatie voor RISICO
+  const kernRisicoVariatie = {
+    'K01': 0.95, 'K02': 1.05, 'K03': 1.12, 'K04': 0.88, 'K05': 1.02,
+    'K06': 1.18, 'K07': 1.25, 'K08': 0.92, 'K09': 0.98, 'K10': 1.08,
+    'K11': 1.30, 'K12': 1.15, 'K13': 0.85, 'K14': 1.04, 'K15': 1.22,
+  };
+  
+  // Jaar-specifieke groei (programma wordt bekender)
+  const jaarGroei = { 2023: 0.70, 2024: 1.10, 2025: 1.20 };
+  
   KERNEN.forEach(kern => {
-    // Bereik van ~25% over 2 jaar, ~37.5% over 3 jaar = ~12.5% per jaar
-    const basisPerJaar = kern.inw65plus * 0.125;
+    const wijkBereik = wijkBereikFactor[kern.wijk] || 1.0;
+    const wijkRisico = wijkRisicoFactor[kern.wijk] || 1.0;
+    const kernBereik = kernBereikVariatie[kern.id] || 1.0;
+    const kernRisico = kernRisicoVariatie[kern.id] || 1.0;
+    
+    // Basis bereik varieert nu per kern: van ~8% tot ~18% per jaar
+    const basisBereikPerJaar = 0.10 * wijkBereik * kernBereik; // ~10% basis, maar varieert
+    const basisPerJaar = kern.inw65plus * basisBereikPerJaar;
     
     JAREN.forEach(jaar => {
-      const jaarFactor = jaar === 2023 ? 0.9 : jaar === 2024 ? 1.1 : 1.0;
+      const jaarFactor = jaarGroei[jaar] || 1.0;
       const jaarTests = Math.floor(basisPerJaar * jaarFactor);
       
-      // Verdeel over maanden (niet uniform - meer in herfst)
+      // Verdeel over maanden (niet uniform - meer in herfst, Week tegen Vallen)
       const maandVerdeling = MAANDEN.map(m => {
-        if (jaar === 2025 && m.id > 12) return 0;
-        const seizoenFactor = [9, 10, 11].includes(m.id) ? 1.4 : [7, 8].includes(m.id) ? 0.6 : 1;
-        return seizoenFactor;
+        if (jaar === 2025 && m.id > 11) return 0; // Tot november 2025
+        // Seizoenspatroon met meer variatie
+        if ([9, 10].includes(m.id)) return 1.6; // Herfst piek (Week tegen Vallen)
+        if ([11].includes(m.id)) return 1.3;
+        if ([7, 8].includes(m.id)) return 0.5; // Zomer dip
+        if ([12, 1, 2].includes(m.id)) return 0.8; // Winter lager
+        return 1.0;
       });
       const totaalFactor = maandVerdeling.reduce((a, b) => a + b, 0);
       
       MAANDEN.forEach((maand, idx) => {
-        if (jaar === 2025 && maand.id > 12) return;
+        if (jaar === 2025 && maand.id > 11) return;
         
         const maandTests = Math.floor(jaarTests * (maandVerdeling[idx] / totaalFactor));
         if (maandTests === 0) return;
         
         ['65-74', '75-84', '85+'].forEach(leeftijd => {
-          // Verdeling naar leeftijd (gebaseerd op bevolkingsopbouw)
-          const leeftijdFactor = leeftijd === '65-74' ? 0.50 : leeftijd === '75-84' ? 0.35 : 0.15;
+          // Leeftijdsverdeling varieert per wijk (sommige wijken hebben oudere populatie)
+          let leeftijdFactor;
+          if (leeftijd === '65-74') {
+            leeftijdFactor = 0.48 + (wijkRisico < 1 ? 0.05 : -0.03); // Jongere wijken meer 65-74
+          } else if (leeftijd === '75-84') {
+            leeftijdFactor = 0.35;
+          } else {
+            leeftijdFactor = 0.17 + (wijkRisico > 1.1 ? 0.05 : -0.02); // Oudere wijken meer 85+
+          }
+          
           const leeftijdTests = Math.max(0, Math.floor(maandTests * leeftijdFactor));
           if (leeftijdTests === 0) return;
           
           ['Man', 'Vrouw'].forEach(geslacht => {
-            const geslachtFactor = geslacht === 'Vrouw' ? 0.55 : 0.45;
+            // Geslachtsverdeling varieert ook per wijk en leeftijd
+            let geslachtFactor;
+            if (geslacht === 'Vrouw') {
+              // Vrouwen doen vaker mee, vooral bij oudere leeftijdsgroepen
+              geslachtFactor = leeftijd === '85+' ? 0.65 : leeftijd === '75-84' ? 0.58 : 0.54;
+            } else {
+              geslachtFactor = leeftijd === '85+' ? 0.35 : leeftijd === '75-84' ? 0.42 : 0.46;
+            }
+            
             const tests = Math.max(0, Math.floor(leeftijdTests * geslachtFactor));
             if (tests === 0) return;
             
-            // Risicoverdeling per leeftijdsgroep - risico loopt op met leeftijd
-            const hoogKans = leeftijd === '85+' ? 0.52 : leeftijd === '75-84' ? 0.35 : 0.20;
-            const matigKans = leeftijd === '85+' ? 0.32 : leeftijd === '75-84' ? 0.38 : 0.35;
+            // RISICO berekening met alle factoren
+            let hoogBasis = leeftijd === '85+' ? 0.50 : leeftijd === '75-84' ? 0.32 : 0.18;
+            let matigBasis = leeftijd === '85+' ? 0.30 : leeftijd === '75-84' ? 0.36 : 0.34;
+            
+            // Mannen hebben 12% hoger risico op hoog valrisico
+            if (geslacht === 'Man') {
+              hoogBasis *= 1.12;
+              matigBasis *= 0.92;
+            }
+            
+            // Pas wijk en kern risicofactoren toe
+            hoogBasis *= wijkRisico * kernRisico;
+            matigBasis *= (wijkRisico * 0.5 + 0.5); // Matig risico minder beïnvloed
+            
+            // Jaar effect: risico daalt iets door preventie-inspanningen
+            if (jaar === 2024) hoogBasis *= 0.97;
+            if (jaar === 2025) hoogBasis *= 0.94;
+            
+            // Zorg dat percentages realistisch blijven
+            const hoogKans = Math.min(0.68, Math.max(0.12, hoogBasis));
+            const matigKans = Math.min(0.45, Math.max(0.25, matigBasis));
             
             const hoog = Math.floor(tests * hoogKans);
             const matig = Math.floor(tests * matigKans);
-            const laag = tests - hoog - matig;
+            const laag = Math.max(0, tests - hoog - matig);
             
             data.push({
               id: id++,
@@ -153,7 +249,7 @@ const genereerTestData = () => {
               leeftijd,
               geslacht,
               tests,
-              laag: Math.max(0, laag),
+              laag,
               matig,
               hoog,
             });
@@ -176,38 +272,47 @@ const FYSIO_DATA = [
 ];
 
 // =============================================================================
-// HOOG RISICO DATA PER JAAR/MAAND (voor synchrone filtering met aanmeldingen)
+// HOOG RISICO DATA PER WIJK/JAAR/MAAND (voor synchrone filtering met aanmeldingen)
 // =============================================================================
-// Deze data representeert het aantal hoog-risico personen per maand/jaar
-// Dit maakt correcte conversieberekeningen mogelijk ongeacht filterinstellingen
+// Deze data representeert het aantal hoog-risico personen per wijk/maand/jaar
+// Dit maakt correcte conversieberekeningen mogelijk per wijk
 const genereerHoogRisicoPerMaand = () => {
   const hoogRisicoData = [];
   
-  // Totaal hoog risico per jaar (gebaseerd op testdata patronen)
-  const hoogRisicoPerJaar = { 2023: 180, 2024: 280, 2025: 186 };
+  // Hoog risico per wijk per jaar (gebaseerd op testdata patronen en wijkgrootte)
+  const hoogRisicoPerWijkPerJaar = {
+    'WK150900': { 2023: 48, 2024: 75, 2025: 50 },   // Varsseveld
+    'WK150901': { 2023: 52, 2024: 82, 2025: 55 },   // Silvolde-Terborg
+    'WK150902': { 2023: 55, 2024: 86, 2025: 58 },   // Ulft-Etten (hoogste risico)
+    'WK150903': { 2023: 25, 2024: 37, 2025: 23 },   // Overig Gendringen
+  };
   
   // Seizoenspatroon: meer tests in herfst (Week tegen Vallen), minder in zomer
   const maandFactoren = MAANDEN.map(m => {
-    if ([9, 10, 11].includes(m.id)) return 1.4; // Herfst: piek
-    if ([7, 8].includes(m.id)) return 0.6; // Zomer: dip
-    if ([12, 1, 2].includes(m.id)) return 0.9; // Winter: iets lager
+    if ([9, 10].includes(m.id)) return 1.5; // Herfst piek
+    if ([11].includes(m.id)) return 1.3;
+    if ([7, 8].includes(m.id)) return 0.5; // Zomer dip
+    if ([12, 1, 2].includes(m.id)) return 0.8; // Winter lager
     return 1.0;
   });
   const totaalFactor = maandFactoren.reduce((s, f) => s + f, 0);
   
-  JAREN.forEach(jaar => {
-    const jaarTotaal = hoogRisicoPerJaar[jaar] || 200;
-    
-    MAANDEN.forEach((maand, idx) => {
-      if (jaar === 2025 && maand.id > 11) return; // Tot en met november 2025
+  WIJKEN.forEach(wijk => {
+    JAREN.forEach(jaar => {
+      const jaarTotaal = hoogRisicoPerWijkPerJaar[wijk.code]?.[jaar] || 50;
       
-      const maandAandeel = maandFactoren[idx] / totaalFactor;
-      const aantal = Math.round(jaarTotaal * maandAandeel);
-      
-      hoogRisicoData.push({
-        jaar,
-        maand: maand.id,
-        aantal,
+      MAANDEN.forEach((maand, idx) => {
+        if (jaar === 2025 && maand.id > 11) return; // Tot en met november 2025
+        
+        const maandAandeel = maandFactoren[idx] / totaalFactor;
+        const aantal = Math.round(jaarTotaal * maandAandeel);
+        
+        hoogRisicoData.push({
+          wijk: wijk.code,
+          jaar,
+          maand: maand.id,
+          aantal,
+        });
       });
     });
   });
@@ -217,17 +322,32 @@ const genereerHoogRisicoPerMaand = () => {
 
 const HOOG_RISICO_PER_MAAND = genereerHoogRisicoPerMaand();
 
-// Simpele aanmeldingen data - alleen aantal per fysio per maand per jaar
-// Aanmeldingen zijn ~40% van hoog risico (realistische conversie)
+// Simpele aanmeldingen data - per fysio per wijk per maand per jaar
+// Conversiepercentage verschilt per wijk!
 const genereerFysioAanmeldingen = () => {
   const aanmeldingen = [];
-  const doelConversie = 0.40; // 40% van hoog risico meldt zich aan
+  
+  // Conversiepercentage verschilt per wijk (dit is de kernvariatie!)
+  const conversiePerWijk = {
+    'WK150900': 0.45,  // Varsseveld: hoogste conversie (actieve wijk, goede bereikbaarheid fysio)
+    'WK150901': 0.38,  // Silvolde-Terborg: gemiddeld
+    'WK150902': 0.42,  // Ulft-Etten: goed (fysio A zit hier)
+    'WK150903': 0.28,  // Overig Gendringen: laagste (verspreid, verder van fysio's)
+  };
+  
+  // Fysio marktaandeel verschilt per wijk (gebaseerd op locatie)
+  const fysioVerdelingPerWijk = {
+    'WK150900': { fysioA: 0.35, fysioB: 0.40, fysioC: 0.25 }, // Varsseveld: B dominant
+    'WK150901': { fysioA: 0.42, fysioB: 0.35, fysioC: 0.23 }, // Silvolde-Terborg: A dominant
+    'WK150902': { fysioA: 0.55, fysioB: 0.28, fysioC: 0.17 }, // Ulft-Etten: A zeer dominant (eigen wijk)
+    'WK150903': { fysioA: 0.30, fysioB: 0.32, fysioC: 0.38 }, // Overig: C dominant (dichtbij)
+  };
   
   HOOG_RISICO_PER_MAAND.forEach(hr => {
-    const maandAanmeldingen = Math.round(hr.aantal * doelConversie);
+    const wijkConversie = conversiePerWijk[hr.wijk] || 0.40;
+    const fysioVerdeling = fysioVerdelingPerWijk[hr.wijk] || { fysioA: 0.45, fysioB: 0.32, fysioC: 0.23 };
     
-    // Verdeel over fysio's: A=45%, B=32%, C=23%
-    const fysioVerdeling = { fysioA: 0.45, fysioB: 0.32, fysioC: 0.23 };
+    const maandAanmeldingen = Math.round(hr.aantal * wijkConversie);
     
     FYSIO_DATA.forEach(fysio => {
       const basisAantal = Math.round(maandAanmeldingen * fysioVerdeling[fysio.id]);
@@ -236,6 +356,7 @@ const genereerFysioAanmeldingen = () => {
       
       aanmeldingen.push({
         fysio: fysio.id,
+        wijk: hr.wijk,
         jaar: hr.jaar,
         maand: hr.maand,
         aantal,
@@ -413,7 +534,7 @@ const StatCard = ({ label, value, unit, sub, color, icon }) => (
           <span style={{ fontSize: '26px', fontWeight: 700, color: color || KLEUREN.tekst, lineHeight: 1 }}>{value}</span>
           {unit && <span style={{ fontSize: '16px', fontWeight: 500, color: KLEUREN.tekstSub }}>{unit}</span>}
         </div>
-        {sub && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</p>}
+        {sub && <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub, lineHeight: 1.4 }}>{sub}</p>}
       </div>
       {icon && (
         <div style={{
@@ -431,8 +552,8 @@ const StatCard = ({ label, value, unit, sub, color, icon }) => (
 
 const ProgressBar = ({ label, value, max = 100, color, showValue = true }) => (
   <div style={{ marginBottom: '16px' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-      <span style={{ fontSize: '13px', fontWeight: 500, color: KLEUREN.tekst, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>{label}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', gap: '12px' }}>
+      <span style={{ fontSize: '13px', fontWeight: 500, color: KLEUREN.tekst, flex: 1, lineHeight: 1.4 }}>{label}</span>
       {showValue && <span style={{ fontSize: '14px', fontWeight: 700, color: color || KLEUREN.primair, flexShrink: 0 }}>{value}%</span>}
     </div>
     <div style={{ height: '8px', backgroundColor: KLEUREN.achtergrond, borderRadius: '4px', overflow: 'hidden' }}>
@@ -644,26 +765,32 @@ const FilterPanel = ({ filters, setFilters }) => {
 // =============================================================================
 // FYSIO COMPONENT - Alleen bekende data
 // =============================================================================
-const FysioAanmeldingenPanel = ({ filters }) => {
+const FysioAanmeldingenPanel = ({ filters, wijk }) => {
   const [selectedFysio, setSelectedFysio] = useState(null);
   
-  // Filter BEIDE datasets op dezelfde jaren en maanden voor synchrone berekening
+  // Filter BEIDE datasets op dezelfde jaren, maanden EN wijk voor synchrone berekening
   const { gefilterdAanmeldingen, gefilterdHoogRisico } = useMemo(() => {
-    const aanmeldingen = FYSIO_AANMELDINGEN.filter(a => 
+    let aanmeldingen = FYSIO_AANMELDINGEN.filter(a => 
       filters.jaren.includes(a.jaar) &&
       filters.maanden.includes(a.maand)
     );
     
-    const hoogRisico = HOOG_RISICO_PER_MAAND.filter(hr =>
+    let hoogRisico = HOOG_RISICO_PER_MAAND.filter(hr =>
       filters.jaren.includes(hr.jaar) &&
       filters.maanden.includes(hr.maand)
     );
+    
+    // Filter ook op wijk als niet "alle" geselecteerd
+    if (wijk !== 'alle') {
+      aanmeldingen = aanmeldingen.filter(a => a.wijk === wijk);
+      hoogRisico = hoogRisico.filter(hr => hr.wijk === wijk);
+    }
     
     return { 
       gefilterdAanmeldingen: aanmeldingen, 
       gefilterdHoogRisico: hoogRisico 
     };
-  }, [filters.jaren, filters.maanden]);
+  }, [filters.jaren, filters.maanden, wijk]);
   
   // Totaal hoog risico in dezelfde selectie
   const totaalHoogRisico = useMemo(() => {
@@ -723,18 +850,18 @@ const FysioAanmeldingenPanel = ({ filters }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       
       {/* Hoofdstatistieken */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard 
           label="Hoog risico in selectie" 
           value={totaalHoogRisico} 
-          sub="Potentiële doelgroep" 
+          sub="Potentiële doelgroep voor fysiotherapie" 
           color={KLEUREN.hoog} 
           icon="⚠️" 
         />
         <StatCard 
           label="Aangemeld bij fysio" 
           value={totalen.totaalAanmeldingen} 
-          sub={`${aanmeldingsPercentage}% van hoog risico`}
+          sub={`${aanmeldingsPercentage}% van hoog risico groep`}
           color={KLEUREN.primair} 
           icon="🏥" 
         />
@@ -742,7 +869,7 @@ const FysioAanmeldingenPanel = ({ filters }) => {
           label="Conversiepercentage" 
           value={aanmeldingsPercentage} 
           unit="%" 
-          sub={`Doel: ${doelPercentage}% | Nog ${nogTeBereiken} te bereiken`}
+          sub={`Doel: ${doelPercentage}% — Nog ${nogTeBereiken} aan te melden`}
           color={aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : aanmeldingsPercentage >= 25 ? KLEUREN.matig : KLEUREN.hoog} 
           icon="📈" 
         />
@@ -750,7 +877,7 @@ const FysioAanmeldingenPanel = ({ filters }) => {
           label="Voortgang naar doel" 
           value={voortgangNaarDoel} 
           unit="%" 
-          sub={voortgangNaarDoel >= 100 ? "Doel behaald! 🎉" : `${100 - voortgangNaarDoel}% te gaan`}
+          sub={voortgangNaarDoel >= 100 ? "Doelstelling behaald! 🎉" : `Nog ${100 - voortgangNaarDoel}% te gaan naar doel`}
           color={voortgangNaarDoel >= 100 ? KLEUREN.laag : voortgangNaarDoel >= 70 ? KLEUREN.matig : KLEUREN.hoog} 
           icon="🎯" 
         />
@@ -1102,6 +1229,11 @@ export default function ValrisicoDashboard() {
     geslachten: ['Man', 'Vrouw'],
   });
 
+  // Laad Nunito font bij mount
+  useEffect(() => {
+    loadNunitoFont();
+  }, []);
+
   const gefilterdData = useMemo(() => {
     return TESTDATA.filter(d => 
       filters.jaren.includes(d.jaar) &&
@@ -1195,6 +1327,246 @@ export default function ValrisicoDashboard() {
     { name: 'Hoog', value: stats.hoog, color: KLEUREN.hoog },
   ];
 
+  // Dynamische risicofactoren gebaseerd op gefilterde data
+  const risicofactorenData = useMemo(() => {
+    const tests = stats.tests;
+    
+    // Bereken geslachtsverdeling voor extra variatie
+    const manData = demografieData.perGeslacht.find(d => d.groep === 'Man') || { tests: 0, hoog: 0 };
+    const vrouwData = demografieData.perGeslacht.find(d => d.groep === 'Vrouw') || { tests: 0, hoog: 0 };
+    const manRatio = tests > 0 ? manData.tests / tests : 0.42;
+    
+    // Bereken leeftijdsverdeling
+    const l65Data = demografieData.perLeeftijd.find(d => d.groep === '65-74 jaar') || { tests: 0, hoog: 0 };
+    const l85Data = demografieData.perLeeftijd.find(d => d.groep === '85+ jaar') || { tests: 0, hoog: 0 };
+    const ouderenRatio = tests > 0 ? l85Data.tests / tests : 0.15;
+    
+    // Basispercentages variëren op basis van risicoprofiel EN samenstelling
+    // Mannen hebben hoger valrisico, ouderen ook
+    const geslachtEffect = (manRatio - 0.42) * 15; // Als meer mannen, hoger risico
+    const leeftijdEffect = (ouderenRatio - 0.15) * 40; // Als meer ouderen, hoger risico
+    const risicoEffect = (stats.pHoog - 28) * 0.4;
+    
+    const basisGevallen = Math.round(38 + geslachtEffect + leeftijdEffect + risicoEffect);
+    const basisValangst = Math.round(35 - geslachtEffect * 0.8 + leeftijdEffect * 0.5); // Vrouwen hebben meer valangst
+    
+    return [
+      { 
+        id: 1, 
+        label: 'Gevallen afgelopen jaar', 
+        perc: Math.round(Math.min(68, Math.max(28, basisGevallen))),
+        basis: 'alle',
+        l65: Math.round(basisGevallen * 0.72), 
+        l75: Math.round(basisGevallen * 1.08), 
+        l85: Math.round(Math.min(75, basisGevallen * 1.42)), 
+        toelichting: `Van alle ${tests.toLocaleString()} geteste 65-plussers in de selectie is dit percentage gevallen.` 
+      },
+      { 
+        id: 2, 
+        label: 'Valangst', 
+        perc: Math.round(Math.min(58, Math.max(22, basisValangst))),
+        basis: 'niet-gevallen',
+        basisPerc: 100 - basisGevallen,
+        l65: Math.round(basisValangst * 0.70), 
+        l75: Math.round(basisValangst * 1.12), 
+        l85: Math.round(Math.min(65, basisValangst * 1.45)), 
+        toelichting: `Percentage van niet-vallers met valangst. ${manRatio < 0.45 ? 'Vrouwen rapporteren vaker valangst.' : ''}` 
+      },
+      { 
+        id: 3, 
+        label: 'Moeite met bewegen', 
+        perc: Math.round(Math.min(48, Math.max(18, 26 + leeftijdEffect * 0.6 + risicoEffect * 0.3))),
+        basis: 'niet-gevallen-geen-angst',
+        basisPerc: Math.round((100 - basisGevallen) * (100 - basisValangst) / 100),
+        l65: 16, l75: 30, l85: 52, 
+        toelichting: `Alleen gevraagd aan mensen zonder val én zonder valangst.` 
+      },
+      { 
+        id: 4, 
+        label: 'Verwondingen + dokter', 
+        perc: Math.round(Math.min(72, Math.max(42, 54 + leeftijdEffect * 0.8 + risicoEffect * 0.5))),
+        basis: 'gevallen',
+        basisPerc: basisGevallen,
+        l65: 44, l75: 58, l85: 72, 
+        toelichting: `Van de vallers had dit percentage verwondingen waarvoor medische hulp nodig was.` 
+      },
+      { 
+        id: 5, 
+        label: 'Meerdere keren gevallen', 
+        perc: Math.round(Math.min(82, Math.max(52, 64 + leeftijdEffect * 0.6 + risicoEffect * 0.4))),
+        basis: 'gevallen',
+        basisPerc: basisGevallen,
+        l65: 54, l75: 67, l85: 82, 
+        toelichting: `Recidive is een belangrijke risicofactor. Hoog percentage vraagt om intensieve begeleiding.` 
+      },
+      { 
+        id: 6, 
+        label: 'Val door flauwvallen', 
+        perc: Math.round(Math.min(30, Math.max(10, 17 + geslachtEffect * 0.3 + risicoEffect * 0.2))),
+        basis: 'gevallen',
+        basisPerc: basisGevallen,
+        l65: 11, l75: 19, l85: 28, 
+        toelichting: `Flauwvallen vereist medisch onderzoek naar onderliggende oorzaken.${manRatio > 0.45 ? ' Komt vaker voor bij mannen.' : ''}` 
+      },
+      { 
+        id: 7, 
+        label: 'Kon niet zelf opstaan', 
+        perc: Math.round(Math.min(58, Math.max(22, 32 + leeftijdEffect * 1.0 + risicoEffect * 0.4))),
+        basis: 'gevallen',
+        basisPerc: basisGevallen,
+        l65: 20, l75: 36, l85: 58, 
+        toelichting: `Niet kunnen opstaan duidt op ernstigere val of verminderde spierkracht.` 
+      },
+      { 
+        id: 8, 
+        label: 'Beperking dagelijkse taken', 
+        perc: Math.round(Math.min(38, Math.max(8, 15 + leeftijdEffect * 0.8 + risicoEffect * 0.3))),
+        basis: 'verhoogd-risico',
+        basisPerc: stats.pMatig + stats.pHoog,
+        l65: 7, l75: 17, l85: 35, 
+        toelichting: `Beperkingen in ADL duiden op kwetsbaarheid en verhoogd valrisico.` 
+      },
+    ];
+  }, [stats, demografieData]);
+
+  // Dynamische preventie data met variatie per geslacht, leeftijd en wijk
+  const preventieData = useMemo(() => {
+    // Bereken samenstellingseffecten uit gefilterde data
+    const manData = demografieData.perGeslacht.find(d => d.groep === 'Man') || { tests: 0, hoog: 0 };
+    const vrouwData = demografieData.perGeslacht.find(d => d.groep === 'Vrouw') || { tests: 0, hoog: 0 };
+    const l65Data = demografieData.perLeeftijd.find(d => d.groep === '65-74 jaar') || { tests: 0 };
+    const l85Data = demografieData.perLeeftijd.find(d => d.groep === '85+ jaar') || { tests: 0 };
+    
+    const totaalTests = stats.tests || 1;
+    const manRatio = manData.tests / totaalTests;
+    const vrouwRatio = vrouwData.tests / totaalTests;
+    const jongerenRatio = l65Data.tests / totaalTests;
+    const ouderenRatio = l85Data.tests / totaalTests;
+    
+    // Sterkere effecten voor duidelijke variatie
+    // Vrouwen: +15% preventief gedrag, Mannen: -10%
+    // Jongeren (65-74): +12%, Ouderen (85+): -18%
+    // Hoog risico: -10%, Laag risico: +8%
+    
+    const geslachtBonus = (vrouwRatio - 0.55) * 35; // Basis is 55% vrouw
+    const leeftijdBonus = (jongerenRatio - 0.48) * 25 - (ouderenRatio - 0.17) * 45;
+    const risicoBonus = (28 - stats.pHoog) * 0.6; // Lager risico = meer preventie
+    
+    const totaalBonus = geslachtBonus + leeftijdBonus + risicoBonus;
+    
+    return [
+      { 
+        id: 1, 
+        label: 'Evenwichtsoefeningen 2x/week', 
+        perc: Math.round(Math.min(55, Math.max(18, 32 + totaalBonus * 0.9))), 
+        hoogRisico: Math.round(Math.min(38, Math.max(12, 22 + geslachtBonus * 0.4))), 
+        advies: 'Start eenvoudige oefeningen of cursus "In Balans".' 
+      },
+      { 
+        id: 2, 
+        label: 'Huisaanpassingen gedaan', 
+        perc: Math.round(Math.min(62, Math.max(28, 44 + totaalBonus * 0.7))), 
+        hoogRisico: Math.round(Math.min(55, Math.max(25, 38 + geslachtBonus * 0.3))), 
+        advies: 'Vraag gratis woningscan aan.' 
+      },
+      { 
+        id: 3, 
+        label: 'Jaarlijkse medicijncontrole', 
+        perc: Math.round(Math.min(78, Math.max(40, 58 + totaalBonus * 0.8))), 
+        hoogRisico: Math.round(Math.min(65, Math.max(35, 48 + geslachtBonus * 0.35))), 
+        advies: 'Vraag medicijnreview bij 5+ medicijnen.' 
+      },
+      { 
+        id: 4, 
+        label: 'Dagelijks voldoende eiwitten', 
+        perc: Math.round(Math.min(80, Math.max(45, 62 + totaalBonus * 0.65))), 
+        hoogRisico: Math.round(Math.min(72, Math.max(40, 55 + geslachtBonus * 0.3))), 
+        advies: 'Eet eiwitrijk bij elke maaltijd.' 
+      },
+      { 
+        id: 5, 
+        label: 'Jaarlijkse oogcontrole', 
+        perc: Math.round(Math.min(85, Math.max(50, 68 + totaalBonus * 0.6))), 
+        hoogRisico: Math.round(Math.min(75, Math.max(42, 55 + geslachtBonus * 0.35))), 
+        advies: 'Laat jaarlijks ogen controleren.' 
+      },
+      { 
+        id: 6, 
+        label: 'Stevige schoenen dragen', 
+        perc: Math.round(Math.min(88, Math.max(55, 72 + totaalBonus * 0.5))), 
+        hoogRisico: Math.round(Math.min(80, Math.max(50, 65 + geslachtBonus * 0.25))), 
+        advies: 'Kies schoenen met stevige hiel.' 
+      },
+    ];
+  }, [stats, demografieData]);
+
+  // Dynamische aanbevelingen teksten - volledig gebaseerd op gefilterde data
+  const aanbevelingenTeksten = useMemo(() => {
+    // Bepaal dominante kenmerken van de selectie
+    const l65Data = demografieData.perLeeftijd.find(d => d.groep === '65-74 jaar') || { tests: 0 };
+    const l75Data = demografieData.perLeeftijd.find(d => d.groep === '75-84 jaar') || { tests: 0 };
+    const l85Data = demografieData.perLeeftijd.find(d => d.groep === '85+ jaar') || { tests: 0 };
+    const manData = demografieData.perGeslacht.find(d => d.groep === 'Man') || { tests: 0, hoog: 0 };
+    const vrouwData = demografieData.perGeslacht.find(d => d.groep === 'Vrouw') || { tests: 0, hoog: 0 };
+    
+    const totaal = stats.tests || 1;
+    const dominanteLeeftijd = l85Data.tests / totaal > 0.25 ? '85+' : 
+                              l75Data.tests / totaal > 0.45 ? '75-84' : '65-74';
+    const dominantGeslacht = manData.tests / totaal > 0.55 ? 'Man' : 
+                             vrouwData.tests / totaal > 0.65 ? 'Vrouw' : null;
+    
+    const enkelGeslacht = filters.geslachten.length === 1 ? filters.geslachten[0] : null;
+    const hoogRisicoAantal = stats.hoog;
+    const matigRisicoAantal = stats.matig;
+    
+    // Bereken percentages dynamisch
+    const beweegPerc = preventieData.find(p => p.id === 1)?.perc || 32;
+    const woningPerc = preventieData.find(p => p.id === 2)?.perc || 44;
+    const medicijnPerc = preventieData.find(p => p.id === 3)?.perc || 58;
+    
+    // Dynamische adviezen op basis van data
+    let beweegAdvies = '';
+    if (dominanteLeeftijd === '85+') {
+      beweegAdvies = `Slechts ${beweegPerc}% doet regelmatig oefeningen. Focus op thuisoefeningen met begeleiding voor de kwetsbare 85+ groep.`;
+    } else if (dominanteLeeftijd === '75-84') {
+      beweegAdvies = `${beweegPerc}% oefent regelmatig. Groepscursussen "In Balans" zijn effectief voor deze leeftijdsgroep.`;
+    } else {
+      beweegAdvies = `${beweegPerc}% is actief. Stimuleer sport en beweegactiviteiten om risico's te voorkomen.`;
+    }
+    
+    let woningAdvies = '';
+    const woningGap = 100 - woningPerc;
+    if (woningGap > 60) {
+      woningAdvies = `${woningGap}% heeft geen aanpassingen - grootschalige actie nodig via huisbezoeken en WMO-subsidies.`;
+    } else if (woningGap > 45) {
+      woningAdvies = `${woningGap}% mist woningaanpassingen. Gratis woningscans actief promoten bij deze doelgroep.`;
+    } else {
+      woningAdvies = `${woningGap}% kan nog profiteren van aanpassingen. Focus op resterende hoog-risico gevallen.`;
+    }
+    
+    let fysioAdvies = '';
+    if (enkelGeslacht === 'Man' || dominantGeslacht === 'Man') {
+      fysioAdvies = `Mannen (${Math.round(manData.tests / totaal * 100)}% van selectie) zijn terughoudender. Benadruk praktische voordelen en resultaten.`;
+    } else if (enkelGeslacht === 'Vrouw' || dominantGeslacht === 'Vrouw') {
+      fysioAdvies = `Vrouwen (${Math.round(vrouwData.tests / totaal * 100)}% van selectie) hebben vaker valangst. Combineer training met angstreductie.`;
+    } else {
+      fysioAdvies = `Van de ${hoogRisicoAantal.toLocaleString()} personen met hoog risico dient minimaal 60% doorverwezen te worden naar fysiotherapie.`;
+    }
+    
+    return {
+      beweegprobleem: beweegPerc,
+      beweegAdvies,
+      woningprobleem: woningGap,
+      woningAdvies,
+      fysioAdvies,
+      medicijnPerc,
+      doelgroepAantal: hoogRisicoAantal,
+      matigAantal: matigRisicoAantal,
+      prioriteitGroep: dominanteLeeftijd,
+      geslachtFocus: enkelGeslacht || dominantGeslacht,
+    };
+  }, [stats, filters, preventieData, demografieData]);
+
   // PDF Rapport genereren - 5 pagina's in Zlimthuis huisstijl
   const generatePDF = () => {
     try {
@@ -1204,11 +1576,11 @@ export default function ValrisicoDashboard() {
       const leeftijdTekst = filters.leeftijden.length === 3 ? 'Alle leeftijden' : filters.leeftijden.join(', ');
       const geslachtTekst = filters.geslachten.length === 2 ? 'Man en vrouw' : filters.geslachten[0];
       
-      const laagstePreventie = [...PREVENTIE].sort((a, b) => a.perc - b.perc);
+      const laagstePreventie = [...preventieData].sort((a, b) => a.perc - b.perc);
       const topKernen = [...stats.perKern].filter(k => k.tests > 0).sort((a, b) => (b.hoog / b.tests) - (a.hoog / a.tests)).slice(0, 5);
       
-      const preventiePerc = PREVENTIE.find(p => p.id === 1)?.perc || 32;
-      const woningPerc = 100 - (PREVENTIE.find(p => p.id === 2)?.perc || 44);
+      const preventiePerc = preventieData.find(p => p.id === 1)?.perc || 32;
+      const woningPerc = 100 - (preventieData.find(p => p.id === 2)?.perc || 44);
 
       const w = window.open('', '_blank');
       if (!w) {
@@ -1218,10 +1590,11 @@ export default function ValrisicoDashboard() {
       
       // CSS in Zlimthuis huisstijl
       w.document.write('<html><head><meta charset="UTF-8"><title>Valrisico Rapport - Gemeente Oude IJsselstreek</title>');
+      w.document.write('<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">');
       w.document.write('<style>');
       w.document.write('@page{size:A4;margin:0}');
       w.document.write('*{box-sizing:border-box;margin:0;padding:0}');
-      w.document.write('body{font-family:"Segoe UI",Roboto,Arial,sans-serif;font-size:10pt;line-height:1.5;color:#1e293b;background:#f8fafc}');
+      w.document.write('body{font-family:"Nunito","Segoe UI",Roboto,Arial,sans-serif;font-size:10pt;line-height:1.5;color:#1e293b;background:#f8fafc}');
       
       // Page layout
       w.document.write('.page{width:210mm;min-height:297mm;padding:20mm;background:white;margin:0 auto 20px auto;box-shadow:0 2px 10px rgba(0,0,0,0.1);position:relative;page-break-after:always}');
@@ -1260,7 +1633,7 @@ export default function ValrisicoDashboard() {
       // Cards - similar to dashboard
       w.document.write('.card{background:white;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:15px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}');
       w.document.write('.card-highlight{border-left:4px solid #DC2626;background:#fef2f2}');
-      w.document.write('.card-teal{border-left:4px solid #0D6560;background:#E6F7F5}');
+      w.document.write('.card-teal{border-left:4px solid #0D6560;background:#E8E6D9}');
       w.document.write('.card-orange{border-left:4px solid #D97706;background:#fffbeb}');
       w.document.write('.card h3{font-size:12pt;font-weight:600;color:#1e293b;margin-bottom:8px;display:flex;align-items:center;gap:8px}');
       w.document.write('.card p{font-size:10pt;color:#475569;line-height:1.6}');
@@ -1293,7 +1666,7 @@ export default function ValrisicoDashboard() {
       w.document.write('.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px}');
       
       // Leeswijzer
-      w.document.write('.leeswijzer{background:linear-gradient(135deg,#E6F7F5 0%,#ccfbf1 100%);border:2px solid #0D6560;border-radius:12px;padding:25px;margin:30px 0}');
+      w.document.write('.leeswijzer{background:linear-gradient(135deg,#E8E6D9 0%,#DDD9C8 100%);border:2px solid #0D6560;border-radius:12px;padding:25px;margin:30px 0}');
       w.document.write('.leeswijzer h3{color:#0D6560;font-size:14pt;margin-bottom:15px;display:flex;align-items:center;gap:10px}');
       w.document.write('.leeswijzer-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}');
       w.document.write('.leeswijzer-item{background:white;padding:15px;border-radius:8px;display:flex;align-items:flex-start;gap:12px}');
@@ -1420,10 +1793,10 @@ export default function ValrisicoDashboard() {
       // ==================== PAGINA 3: ANALYSE ====================
       w.document.write('<div class="page">');
       w.document.write('<div class="section"><div class="section-title"><span>🔬</span> Risicofactoren</div>');
-      w.document.write('<p class="section-subtitle">De valrisicotest meet 8 risicofactoren. Onderstaande tabel toont hoe vaak elke factor voorkomt.</p>');
+      w.document.write('<p class="section-subtitle">De valrisicotest meet 8 risicofactoren. Onderstaande tabel toont hoe vaak elke factor voorkomt (gefilterde data).</p>');
       w.document.write('<table>');
       w.document.write('<tr><th>Risicofactor</th><th style="width:15%">Prevalentie</th><th>Toelichting</th></tr>');
-      RISICOFACTOREN.forEach(f => {
+      risicofactorenData.forEach(f => {
         const badgeClass = f.perc >= 50 ? 'badge-red' : f.perc >= 35 ? 'badge-orange' : 'badge-green';
         w.document.write('<tr><td><strong>' + f.label + '</strong></td><td><span class="badge ' + badgeClass + '">' + f.perc + '%</span></td><td style="font-size:9pt;color:#64748b">' + f.toelichting + '</td></tr>');
       });
@@ -1636,7 +2009,7 @@ export default function ValrisicoDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', color: KLEUREN.tekst, overflow: 'auto' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: FONT_FAMILY, color: KLEUREN.tekst, overflow: 'auto' }}>
       
       {/* STICKY HEADER WRAPPER */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: KLEUREN.wit, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
@@ -1745,8 +2118,8 @@ export default function ValrisicoDashboard() {
           <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', paddingLeft: '16px', paddingRight: '16px', minWidth: 'max-content' }}>
             {[
               { id: 'overzicht', label: 'Overzicht', icon: '🏠' },
-              { id: 'risico', label: 'Risicofactoren', icon: '📊' },
               { id: 'actie', label: 'Aanbevelingen', icon: '✅' },
+              { id: 'risico', label: 'Risicofactoren', icon: '📊' },
               { id: 'preventie', label: 'Preventie', icon: '🛡️' },
               { id: 'demografie', label: 'Demografie', icon: '👤' },
               { id: 'kaart', label: 'Geografisch', icon: '📍' },
@@ -1874,7 +2247,7 @@ export default function ValrisicoDashboard() {
               Hieronder ziet u het totaal aantal hoog-risico personen en hoeveel zich hebben aangemeld.
             </InfoPanel>
             
-            <FysioAanmeldingenPanel filters={filters} />
+            <FysioAanmeldingenPanel filters={filters} wijk={wijk} />
           </div>
         )}
 
@@ -1885,12 +2258,13 @@ export default function ValrisicoDashboard() {
               <strong>Toelichting vragenlogica:</strong> De Valrisicotest volgt een beslisboom. Niet iedereen krijgt alle vragen: 
               vraag 2-3 zijn alleen voor niet-vallers, vraag 4-7 alleen voor vallers, vraag 8 alleen bij verhoogd risico. 
               Per vraag zie je: <strong>percentage</strong> (<span style={{ color: KLEUREN.hoog, fontWeight: 600 }}>aantal JA</span> | totaal ondervraagd).
+              <br /><em style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>Data past zich aan op basis van de geselecteerde filters.</em>
             </InfoPanel>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
               <Card>
                 <CardTitle sub="Percentage en aantallen per vraag">Prevalentie per risicofactor</CardTitle>
-                {RISICOFACTOREN.map(f => {
+                {risicofactorenData.map(f => {
                   // Bereken aantallen op basis van totaal tests en basisPerc
                   const totaalTests = stats.tests;
                   const ondervraagd = f.basisPerc ? Math.round(totaalTests * (f.basisPerc / 100)) : totaalTests;
@@ -1899,8 +2273,8 @@ export default function ValrisicoDashboard() {
                   
                   return (
                     <div key={f.id} style={{ marginBottom: '18px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: 500, color: KLEUREN.tekst, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', gap: '12px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 500, color: KLEUREN.tekst, flex: 1, lineHeight: 1.4 }}>
                           {f.id}. {f.label}
                         </span>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexShrink: 0 }}>
@@ -1908,7 +2282,7 @@ export default function ValrisicoDashboard() {
                             {f.perc}%
                           </span>
                           <span style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>
-                            (<span style={{ fontWeight: 700, color: kleur }}>{aantalJa}</span> | {ondervraagd})
+                            (<span style={{ fontWeight: 700, color: kleur }}>{aantalJa.toLocaleString()}</span> | {ondervraagd.toLocaleString()})
                           </span>
                         </div>
                       </div>
@@ -1921,7 +2295,7 @@ export default function ValrisicoDashboard() {
                           transition: 'width 0.3s ease' 
                         }} />
                       </div>
-                      <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: KLEUREN.tekstSub, lineHeight: 1.4 }}>{f.toelichting}</p>
+                      <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub, lineHeight: 1.5 }}>{f.toelichting}</p>
                     </div>
                   );
                 })}
@@ -1941,7 +2315,7 @@ export default function ValrisicoDashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {RISICOFACTOREN.map((f, idx) => {
+                        {risicofactorenData.map((f, idx) => {
                           const getKleur = (waarde) => {
                             if (waarde >= 50) return { bg: KLEUREN.hoogLicht, tekst: KLEUREN.hoog };
                             if (waarde >= 35) return { bg: KLEUREN.matigLicht, tekst: KLEUREN.matig };
@@ -2020,6 +2394,7 @@ export default function ValrisicoDashboard() {
               <strong>Preventief gedrag:</strong> De valrisicotest meet 6 vormen van preventief gedrag die bewezen effectief zijn om vallen te voorkomen. 
               Hoe hoger het percentage, hoe meer mensen deze maatregel al toepassen. De <strong style={{ color: KLEUREN.hoog }}>gap</strong> toont 
               hoeveel procent dit nog <em>niet</em> doet — daar ligt de kans voor interventie.
+              <br /><em style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>Percentages passen zich aan op basis van de geselecteerde filters.</em>
             </InfoPanel>
 
             {/* Grafiek - hoogste percentage bovenaan */}
@@ -2028,7 +2403,7 @@ export default function ValrisicoDashboard() {
               <div style={{ width: '100%', overflowX: 'auto' }}>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart 
-                    data={[...PREVENTIE].sort((a, b) => b.perc - a.perc)} 
+                    data={[...preventieData].sort((a, b) => b.perc - a.perc)} 
                     layout="vertical" 
                     margin={{ left: 10, right: 55, top: 5, bottom: 5 }}
                   >
@@ -2045,7 +2420,7 @@ export default function ValrisicoDashboard() {
                       radius={[0, 4, 4, 0]}
                       label={{ position: 'right', fontSize: 11, fontWeight: 600, fill: KLEUREN.tekst, formatter: (v) => `${v}%` }}
                     >
-                      {[...PREVENTIE].sort((a, b) => b.perc - a.perc).map((entry, index) => (
+                      {[...preventieData].sort((a, b) => b.perc - a.perc).map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.perc >= 60 ? KLEUREN.laag : entry.perc >= 40 ? KLEUREN.matig : KLEUREN.hoog} />
                       ))}
                     </Bar>
@@ -2070,7 +2445,7 @@ export default function ValrisicoDashboard() {
 
             {/* Gedetailleerde preventie-acties in stijl van aanbevelingen */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-              {[...PREVENTIE].sort((a, b) => a.perc - b.perc).map((p, i) => {
+              {[...preventieData].sort((a, b) => a.perc - b.perc).map((p, i) => {
                 const gap = 100 - p.perc;
                 const isKritiek = p.perc < 40;
                 const isAandacht = p.perc >= 40 && p.perc < 60;
@@ -2318,6 +2693,30 @@ export default function ValrisicoDashboard() {
               </div>
             </Card>
 
+            {/* Visuele scheiding naar leeftijd sectie */}
+            <div style={{ 
+              margin: '16px 0', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '16px' 
+            }}>
+              <div style={{ flex: 1, height: '2px', background: `linear-gradient(to right, transparent, ${KLEUREN.rand}, ${KLEUREN.rand})` }} />
+              <div style={{ 
+                padding: '8px 20px', 
+                backgroundColor: KLEUREN.achtergrond, 
+                borderRadius: '20px',
+                border: `1px solid ${KLEUREN.rand}`,
+                fontSize: '12px',
+                fontWeight: 600,
+                color: KLEUREN.tekstSub,
+                textTransform: 'uppercase',
+                letterSpacing: '1px'
+              }}>
+                Leeftijd
+              </div>
+              <div style={{ flex: 1, height: '2px', background: `linear-gradient(to left, transparent, ${KLEUREN.rand}, ${KLEUREN.rand})` }} />
+            </div>
+
             {/* Analyse per leeftijdsgroep */}
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 600, color: KLEUREN.tekst, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2451,6 +2850,30 @@ export default function ValrisicoDashboard() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Visuele scheiding tussen secties */}
+            <div style={{ 
+              margin: '32px 0', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '16px' 
+            }}>
+              <div style={{ flex: 1, height: '2px', background: `linear-gradient(to right, transparent, ${KLEUREN.rand}, ${KLEUREN.rand})` }} />
+              <div style={{ 
+                padding: '8px 20px', 
+                backgroundColor: KLEUREN.achtergrond, 
+                borderRadius: '20px',
+                border: `1px solid ${KLEUREN.rand}`,
+                fontSize: '12px',
+                fontWeight: 600,
+                color: KLEUREN.tekstSub,
+                textTransform: 'uppercase',
+                letterSpacing: '1px'
+              }}>
+                Geslacht
+              </div>
+              <div style={{ flex: 1, height: '2px', background: `linear-gradient(to left, transparent, ${KLEUREN.rand}, ${KLEUREN.rand})` }} />
             </div>
 
             {/* Analyse per geslacht */}
@@ -2670,7 +3093,8 @@ export default function ValrisicoDashboard() {
             <InfoPanel type="info">
               <strong>Van data naar actie:</strong> Op basis van de valrisicotest-resultaten zijn onderstaande aanbevelingen opgesteld, 
               geprioriteerd op verwachte impact en haalbaarheid. De onderbouwing is gebaseerd op landelijke richtlijnen van VeiligheidNL 
-              en de specifieke data uit Oude IJsselstreek.
+              en de specifieke data uit {wijk === 'alle' ? 'Oude IJsselstreek' : WIJKEN.find(w => w.code === wijk)?.naam || 'de geselecteerde wijk'}.
+              <br /><em style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>Aanbevelingen passen zich aan op basis van de geselecteerde filters ({stats.tests.toLocaleString()} tests, {stats.hoog.toLocaleString()} hoog risico).</em>
             </InfoPanel>
 
             {/* Top 3 Prioriteiten */}
@@ -2680,29 +3104,43 @@ export default function ValrisicoDashboard() {
                   titel: 'Beweegprogramma\'s opschalen', 
                   icon: '🏃', 
                   prio: 1,
-                  probleem: `Slechts ${PREVENTIE.find(p => p.id === 1)?.perc || 32}% van de 65-plussers doet minimaal 2x per week evenwichtsoefeningen.`,
-                  onderbouwing: 'Onderzoek toont aan dat gerichte balans- en krachttraining het valrisico met 30-40% kan verlagen. Dit is de meest effectieve interventie.',
-                  acties: [
-                    'Uitbreiden cursusaanbod "In Balans" en "Vallen Verleden Tijd"',
-                    'Thuisoefenprogramma met instructievideo\'s voor minder mobielen',
-                    'Beweegtuinen in kernen met hoog risico',
-                    'Samenwerking met lokale sportverenigingen'
-                  ],
-                  kpi: 'Doel: 50% van hoog-risico groep neemt deel aan beweegprogramma',
+                  probleem: `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet minimaal 2x per week evenwichtsoefeningen.`,
+                  onderbouwing: aanbevelingenTeksten.beweegAdvies,
+                  acties: aanbevelingenTeksten.prioriteitGroep === '85+'
+                    ? [
+                        'Thuisoefenprogramma met begeleiding aan huis',
+                        'Persoonlijke valpreventiecoach voor 85-plussers',
+                        'Samenwerking met wijkverpleging',
+                        'Eenvoudige oefeningen met stoel en handgreep'
+                      ]
+                    : [
+                        'Uitbreiden cursusaanbod "In Balans" en "Vallen Verleden Tijd"',
+                        'Thuisoefenprogramma met instructievideo\'s voor minder mobielen',
+                        'Beweegtuinen in kernen met hoog risico',
+                        'Samenwerking met lokale sportverenigingen'
+                      ],
+                  kpi: `Doel: 50% van de ${stats.hoog.toLocaleString()} hoog-risico personen neemt deel aan beweegprogramma`,
                   verantwoordelijk: 'GGD / Welzijnsorganisatie / Fysiotherapeuten'
                 },
                 { 
                   titel: 'Woningaanpassingen stimuleren', 
                   icon: '🏠', 
                   prio: 2,
-                  probleem: `${100 - (PREVENTIE.find(p => p.id === 2)?.perc || 44)}% heeft nog geen woningaanpassingen doorgevoerd om valrisico te verminderen.`,
-                  onderbouwing: 'Woningaanpassingen zoals antislipmatten, betere verlichting en handgrepen kunnen tot 20% van de thuisvallen voorkomen.',
-                  acties: [
-                    'Gratis woningscans aanbieden aan hoog-risico groep',
-                    'Huisbezoeken voor 85+ en minder mobielen',
-                    'Informatiebijeenkomsten over woningaanpassingen per kern',
-                    'Subsidieregeling voor kleine aanpassingen via WMO'
-                  ],
+                  probleem: `${aanbevelingenTeksten.woningprobleem}% heeft nog geen woningaanpassingen doorgevoerd om valrisico te verminderen.`,
+                  onderbouwing: aanbevelingenTeksten.woningAdvies,
+                  acties: aanbevelingenTeksten.prioriteitGroep === '85+'
+                    ? [
+                        'Proactieve huisbezoeken door wijkverpleging',
+                        'Woningscan aan huis met directe begeleiding',
+                        'Subsidieregeling voor aanpassingen via WMO',
+                        'Directe levering en installatie van hulpmiddelen'
+                      ]
+                    : [
+                        'Gratis woningscans aanbieden aan hoog-risico groep',
+                        'Huisbezoeken voor 85+ en minder mobielen',
+                        'Informatiebijeenkomsten over woningaanpassingen per kern',
+                        'Subsidieregeling voor kleine aanpassingen via WMO'
+                      ],
                   kpi: 'Doel: 200 woningscans per jaar, 80% voert minimaal 1 aanpassing door',
                   verantwoordelijk: 'Gemeente WMO / Woningcorporaties / Thuiszorg'
                 },
@@ -2710,15 +3148,29 @@ export default function ValrisicoDashboard() {
                   titel: 'Doorverwijzing naar fysiotherapie', 
                   icon: '🩺', 
                   prio: 3,
-                  probleem: `Van de ${stats.hoog} personen met hoog valrisico is het aanmeldingspercentage bij fysiotherapie nog onvoldoende.`,
-                  onderbouwing: 'Professionele valpreventietraining onder begeleiding van een fysiotherapeut is effectiever dan zelfstandig oefenen, vooral bij hoog risico.',
-                  acties: [
-                    'Directe koppeling testuitslag met huisarts voor doorverwijzing',
-                    'Afspraken met fysiotherapiepraktijken over capaciteit valpreventie',
-                    'Informatiebrief naar hoog-risico met concrete vervolgstappen',
-                    'Terugkoppeling naar huisarts bij niet-aanmelding na 4 weken'
-                  ],
-                  kpi: 'Doel: 60% van hoog-risico groep meldt zich aan bij fysiotherapeut',
+                  probleem: `Van de ${stats.hoog.toLocaleString()} personen met hoog valrisico in deze selectie is het aanmeldingspercentage bij fysiotherapie nog onvoldoende.`,
+                  onderbouwing: aanbevelingenTeksten.fysioAdvies,
+                  acties: aanbevelingenTeksten.geslachtFocus === 'Man'
+                    ? [
+                        'Praktische, resultaatgerichte communicatie',
+                        'Mannelijke ambassadeurs en ervaringsverhalen',
+                        'Koppeling met sport- en hobbyverenigingen',
+                        'Huisarts benadruk praktische voordelen'
+                      ]
+                    : aanbevelingenTeksten.geslachtFocus === 'Vrouw'
+                    ? [
+                        'Aandacht voor valangst en zelfvertrouwen',
+                        'Groepscursussen met sociale component',
+                        'Botdichtheidsscreening combineren',
+                        'Mantelzorgers actief betrekken'
+                      ]
+                    : [
+                        'Directe koppeling testuitslag met huisarts voor doorverwijzing',
+                        'Afspraken met fysiotherapiepraktijken over capaciteit valpreventie',
+                        'Informatiebrief naar hoog-risico met concrete vervolgstappen',
+                        'Terugkoppeling naar huisarts bij niet-aanmelding na 4 weken'
+                      ],
+                  kpi: `Doel: 60% van de ${stats.hoog.toLocaleString()} hoog-risico personen meldt zich aan bij fysiotherapeut`,
                   verantwoordelijk: 'Huisartsen / Fysiotherapeuten / POH'
                 },
               ].map((item, i) => (
@@ -2782,7 +3234,7 @@ export default function ValrisicoDashboard() {
                 {[
                   { 
                     groep: '85-plussers', 
-                    aantal: demografieData.perLeeftijd.find(l => l.groep === '85+')?.tests || 0,
+                    aantal: demografieData.perLeeftijd.find(l => l.groep === '85+ jaar')?.tests || 0,
                     prio: 'hoog',
                     color: KLEUREN.hoog,
                     icon: '👴',
@@ -2796,11 +3248,11 @@ export default function ValrisicoDashboard() {
                   },
                   { 
                     groep: 'Recidiverende vallers', 
-                    aantal: Math.round(stats.hoog * 0.67),
+                    aantal: Math.round(stats.hoog * (risicofactorenData.find(r => r.id === 5)?.perc || 67) / 100),
                     prio: 'hoog',
                     color: KLEUREN.hoog,
                     icon: '🔄',
-                    risico: '67% van vallers is meerdere keren gevallen',
+                    risico: `${risicofactorenData.find(r => r.id === 5)?.perc || 67}% van vallers is meerdere keren gevallen`,
                     aanpak: [
                       'Multidisciplinair valteam (huisarts, fysio, ergo)',
                       'Uitgebreid valonderzoek naar oorzaken',
@@ -2814,7 +3266,7 @@ export default function ValrisicoDashboard() {
                     prio: 'matig',
                     color: KLEUREN.matig,
                     icon: '⚡',
-                    risico: 'Risico op doorgroei naar hoog risico',
+                    risico: `${stats.matig.toLocaleString()} personen met risico op doorgroei naar hoog risico`,
                     aanpak: [
                       'Groepscursussen valpreventie',
                       'Online woningscan met adviesrapport',
@@ -2824,11 +3276,11 @@ export default function ValrisicoDashboard() {
                   },
                   { 
                     groep: 'Mensen met valangst', 
-                    aantal: Math.round((stats.tests - stats.laag) * 0.38),
+                    aantal: Math.round((stats.tests - stats.laag) * (risicofactorenData.find(r => r.id === 2)?.perc || 38) / 100),
                     prio: 'matig',
                     color: KLEUREN.matig,
                     icon: '😰',
-                    risico: '38% heeft valangst, leidt tot vermijdingsgedrag',
+                    risico: `${risicofactorenData.find(r => r.id === 2)?.perc || 38}% van niet-vallers heeft valangst`,
                     aanpak: [
                       'Cognitieve gedragstherapie elementen',
                       'Geleidelijke opbouw van activiteiten',
@@ -2864,29 +3316,186 @@ export default function ValrisicoDashboard() {
               </div>
             </Card>
 
-            {/* KPI's */}
+            {/* KPI's voor monitoring - SMART doelstellingen */}
             <Card>
-              <CardTitle sub="Meetbare doelstellingen">KPI's voor monitoring</CardTitle>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              <CardTitle sub="Actuele stand en SMART doelstellingen">KPI's voor monitoring</CardTitle>
+              <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: KLEUREN.tekstSub, lineHeight: 1.6 }}>
+                De huidige stand is gebaseerd op de geselecteerde filterperiode ({filters.jaren.length === JAREN.length ? 'alle jaren' : filters.jaren.join(', ')}). 
+                Doelstellingen gelden voor eind 2025.
+              </p>
+              
+              {/* Actuele cijfers - niet als doelen maar als feiten */}
+              <div style={{ marginBottom: '24px', padding: '20px', backgroundColor: KLEUREN.primairLicht, borderRadius: '12px', border: `1px solid ${KLEUREN.primair}` }}>
+                <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 600, color: KLEUREN.primair, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📊</span> Actuele cijfers in geselecteerde periode
+                </h4>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+                  <div style={{ padding: '16px', backgroundColor: KLEUREN.wit, borderRadius: '8px', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: KLEUREN.primair }}>{stats.tests.toLocaleString()}</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Tests afgenomen</p>
+                  </div>
+                  <div style={{ padding: '16px', backgroundColor: KLEUREN.wit, borderRadius: '8px', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: KLEUREN.hoog }}>{stats.hoog.toLocaleString()}</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Hoog valrisico</p>
+                  </div>
+                  <div style={{ padding: '16px', backgroundColor: KLEUREN.wit, borderRadius: '8px', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: KLEUREN.hoog }}>{stats.pHoog}%</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Percentage hoog risico</p>
+                  </div>
+                  <div style={{ padding: '16px', backgroundColor: KLEUREN.wit, borderRadius: '8px', textAlign: 'center' }}>
+                    <p style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: KLEUREN.laag }}>{Math.round(stats.hoog * 0.35).toLocaleString()}</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Aangemeld bij fysio (~35%)</p>
+                  </div>
+                </div>
+              </div>
+              
+              <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 600, color: KLEUREN.tekst, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🎯</span> Doelstellingen 2025
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
                 {[
-                  { label: 'Percentage hoog risico', huidig: `${stats.pHoog}%`, doel: '25%', icon: '📉' },
-                  { label: 'Bereik valrisicotest', huidig: `${stats.bereik}%`, doel: '40%', icon: '📈' },
-                  { label: 'Doorverwijzing naar fysio', huidig: '~35%', doel: '60%', icon: '🏥' },
-                  { label: 'Woningscans uitgevoerd', huidig: '~80/jaar', doel: '200/jaar', icon: '🏠' },
-                  { label: 'Deelname beweegprogramma', huidig: '~25%', doel: '50%', icon: '🏃' },
-                ].map((kpi, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', backgroundColor: KLEUREN.achtergrond, borderRadius: '8px' }}>
-                    <span style={{ fontSize: '20px' }}>{kpi.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: '12px', fontWeight: 500, color: KLEUREN.tekst }}>{kpi.label}</p>
-                      <div style={{ marginTop: '4px' }}>
-                        <span style={{ fontSize: '13px', color: KLEUREN.tekstSub }}>{kpi.huidig}</span>
-                        <span style={{ fontSize: '13px', color: KLEUREN.tekstSub }}> → </span>
-                        <span style={{ fontSize: '14px', fontWeight: 600, color: KLEUREN.laag }}>{kpi.doel}</span>
+                  { 
+                    label: 'Jaarlijkse oogcontrole', 
+                    huidig: 72, 
+                    doel: 70, 
+                    eenheid: '%',
+                    icon: '👁️',
+                    richting: 'omhoog',
+                    toelichting: 'Het percentage 65-plussers dat jaarlijks de ogen laat controleren. Dit doel is behaald! Blijvende aandacht nodig om dit niveau te behouden.',
+                    meetmethode: 'Percentage "ja" op aanvullende vraag 1 van de valrisicotest.'
+                  },
+                  { 
+                    label: 'Dagelijkse eiwitinname', 
+                    huidig: 68, 
+                    doel: 65, 
+                    eenheid: '%',
+                    icon: '🥛',
+                    richting: 'omhoog',
+                    toelichting: 'Het percentage 65-plussers dat dagelijks voldoende eiwitten eet voor spierbehoud. Doel behaald dankzij voorlichting via huisartsen en diëtisten.',
+                    meetmethode: 'Percentage "ja" op aanvullende vraag 5 van de valrisicotest.'
+                  },
+                  { 
+                    label: 'Bereik valrisicotest verhogen', 
+                    huidig: stats.bereik, 
+                    doel: 40, 
+                    eenheid: '%',
+                    icon: '📈',
+                    richting: 'omhoog',
+                    toelichting: `Momenteel heeft ${stats.bereik}% van de ${stats.inw65plus.toLocaleString()} inwoners 65+ de test gedaan. Doel is 40% bereik.`,
+                    meetmethode: 'Berekend als: (aantal afgenomen tests / totaal 65+ inwoners) × 100%.'
+                  },
+                  { 
+                    label: 'Doorverwijzing naar fysiotherapie', 
+                    huidig: 35, 
+                    doel: 60, 
+                    eenheid: '%',
+                    icon: '🏥',
+                    richting: 'omhoog',
+                    toelichting: `Van de ${stats.hoog.toLocaleString()} personen met hoog risico is ~35% aangemeld. Doel is 60% (${Math.round(stats.hoog * 0.6).toLocaleString()} personen).`,
+                    meetmethode: 'Berekend als: (fysio-aanmeldingen / totaal hoog risico) × 100%.'
+                  },
+                  { 
+                    label: 'Woningscans uitvoeren', 
+                    huidig: 80, 
+                    doel: 200, 
+                    eenheid: ' per jaar',
+                    icon: '🏠',
+                    richting: 'omhoog',
+                    toelichting: 'Jaarlijks 200 woningscans uitvoeren bij 65-plussers met verhoogd valrisico om valgevaar in de thuissituatie te verminderen.',
+                    meetmethode: 'Aantal uitgevoerde woningscans geregistreerd door WMO-loket en gecertificeerde aanbieders.'
+                  },
+                  { 
+                    label: 'Deelname aan beweegprogramma', 
+                    huidig: 25, 
+                    doel: 50, 
+                    eenheid: '%',
+                    icon: '🏃',
+                    richting: 'omhoog',
+                    toelichting: `Minimaal 50% van de ${(stats.matig + stats.hoog).toLocaleString()} personen met matig/hoog risico neemt deel aan beweegprogramma.`,
+                    meetmethode: 'Deelnemersregistratie van erkende valpreventie-cursussen in de gemeente.'
+                  },
+                ].map((kpi, i) => {
+                  const voortgang = kpi.richting === 'omlaag' 
+                    ? Math.max(0, Math.min(100, ((100 - kpi.huidig) / (100 - kpi.doel)) * 100))
+                    : Math.max(0, Math.min(100, (kpi.huidig / kpi.doel) * 100));
+                  const opSchema = kpi.richting === 'omlaag' ? kpi.huidig <= kpi.doel : kpi.huidig >= kpi.doel;
+                  const bijna = kpi.richting === 'omlaag' 
+                    ? kpi.huidig <= kpi.doel * 1.2 
+                    : kpi.huidig >= kpi.doel * 0.8;
+                  
+                  return (
+                    <div key={i} style={{ 
+                      padding: '20px', 
+                      backgroundColor: KLEUREN.achtergrond, 
+                      borderRadius: '12px',
+                      borderLeft: `4px solid ${opSchema ? KLEUREN.laag : bijna ? KLEUREN.matig : KLEUREN.hoog}`
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '28px' }}>{kpi.icon}</span>
+                        <div style={{ flex: 1 }}>
+                          <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: KLEUREN.tekst, lineHeight: 1.4 }}>{kpi.label}</h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                            <div style={{ 
+                              padding: '4px 10px', 
+                              backgroundColor: KLEUREN.wit, 
+                              borderRadius: '6px',
+                              border: `1px solid ${KLEUREN.rand}`
+                            }}>
+                              <span style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>Huidig: </span>
+                              <span style={{ fontSize: '16px', fontWeight: 700, color: opSchema ? KLEUREN.laag : bijna ? KLEUREN.matig : KLEUREN.hoog }}>
+                                {kpi.huidig}{kpi.eenheid}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '16px', color: KLEUREN.tekstSub }}>→</span>
+                            <div style={{ 
+                              padding: '4px 10px', 
+                              backgroundColor: KLEUREN.primairLicht, 
+                              borderRadius: '6px',
+                              border: `1px solid ${KLEUREN.primair}`
+                            }}>
+                              <span style={{ fontSize: '11px', color: KLEUREN.primair }}>Doel: </span>
+                              <span style={{ fontSize: '16px', fontWeight: 700, color: KLEUREN.primair }}>
+                                {kpi.doel}{kpi.eenheid}
+                              </span>
+                            </div>
+                            <Badge color={opSchema ? KLEUREN.laag : bijna ? KLEUREN.matig : KLEUREN.hoog}>
+                              {opSchema ? 'Behaald' : bijna ? 'Bijna' : 'Actie nodig'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Voortgangsbalk */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>Voortgang naar doel</span>
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: opSchema ? KLEUREN.laag : bijna ? KLEUREN.matig : KLEUREN.primair }}>{Math.round(voortgang)}%</span>
+                        </div>
+                        <div style={{ height: '8px', backgroundColor: KLEUREN.rand, borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ 
+                            width: `${Math.min(voortgang, 100)}%`, 
+                            height: '100%', 
+                            backgroundColor: opSchema ? KLEUREN.laag : bijna ? KLEUREN.matig : KLEUREN.primair,
+                            borderRadius: '4px',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                      </div>
+                      
+                      {/* Toelichting */}
+                      <p style={{ margin: '0 0 10px 0', fontSize: '12px', color: KLEUREN.tekst, lineHeight: 1.6 }}>
+                        {kpi.toelichting}
+                      </p>
+                      
+                      {/* Meetmethode */}
+                      <div style={{ padding: '8px 10px', backgroundColor: KLEUREN.wit, borderRadius: '6px', borderLeft: `3px solid ${KLEUREN.primair}` }}>
+                        <p style={{ margin: 0, fontSize: '11px', color: KLEUREN.tekstSub }}>
+                          <strong style={{ color: KLEUREN.primair }}>Meetmethode:</strong> {kpi.meetmethode}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           </div>
