@@ -273,54 +273,109 @@ const TESTDATA = genereerTestData();
 // WOONPLAATS NAAR KERN MAPPING (voor Supabase data)
 // =============================================================================
 const WOONPLAATS_NAAR_KERN = {
+  // Kern K01 - Varsseveld
   'Varsseveld': 'K01',
+  // Kern K02 - Westendorp  
   'Westendorp': 'K02',
+  // Kern K03 - Sinderen
   'Sinderen': 'K03',
+  // Kern K04 - Terborg
   'Terborg': 'K04',
+  // Kern K05 - Silvolde
   'Silvolde': 'K05',
+  // Kern K06 - Heelweg
   'Heelweg': 'K06',
+  // Kern K07 - Bontebrug
   'Bontebrug': 'K07',
+  // Kern K08 - Ulft
   'Ulft': 'K08',
+  // Kern K09 - Etten
   'Etten': 'K09',
+  // Kern K10 - Gendringen (inclusief kleine kernen)
   'Gendringen': 'K10',
+  'Kilder': 'K10',
+  'IJzerlo': 'K10',
+  // Kern K11 - Netterden
   'Netterden': 'K11',
+  // Kern K12 - Megchelen
   'Megchelen': 'K12',
+  // Kern K13 - Breedenbroek
   'Breedenbroek': 'K13',
+  // Kern K14 - Varsselder
   'Varsselder': 'K14',
+  // Kern K15 - Voorst
   'Voorst': 'K15',
-  'Kilder': 'K10', // Valt onder Gendringen
-  'IJzerlo': 'K10', // Valt onder Gendringen
 };
 
-// Leeftijd mapping van valrisicotest naar dashboard formaat
-const LEEFTIJD_MAPPING = {
-  '65-69': '65-74',
-  '70-74': '65-74',
-  '75-79': '75-84',
-  '80-84': '75-84',
-  '85-89': '85+',
-  '90+': '85+',
-};
+// Lijst van alle woonplaatsen in Oude IJsselstreek (voor check)
+const OUDE_IJSSELSTREEK_PLAATSEN = Object.keys(WOONPLAATS_NAAR_KERN);
 
 // Transformeer Supabase data naar TESTDATA formaat
 const transformeerSupabaseData = (supabaseData) => {
   // Groepeer per kern/jaar/maand/leeftijd/geslacht
   const grouped = {};
   
+  // Houd bij hoeveel tests buiten gemeente zijn
+  let buitenGemeente = { totaal: 0, laag: 0, matig: 0, hoog: 0 };
+  
   supabaseData.forEach(record => {
     const datum = new Date(record.created_at);
     const jaar = datum.getFullYear();
     const maand = datum.getMonth() + 1;
     
-    // Bepaal kern op basis van woonplaats
-    const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats] || 'K08'; // Default Ulft
-    const kern = KERNEN.find(k => k.id === kernId) || KERNEN[7];
+    // Check of woonplaats in Oude IJsselstreek ligt
+    const isInGemeente = OUDE_IJSSELSTREEK_PLAATSEN.some(
+      plaats => plaats.toLowerCase() === (record.woonplaats || '').toLowerCase()
+    );
     
-    // Map leeftijd naar dashboard categorie
-    const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || '75-84';
+    // Leeftijd direct overnemen uit database
+    const leeftijd = record.leeftijd || 'Onbekend';
     
     // Normaliseer geslacht
-    const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
+    const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Onbekend';
+    
+    // Als buiten gemeente, tel apart
+    if (!isInGemeente) {
+      buitenGemeente.totaal++;
+      if (record.risiconiveau === 'laag') buitenGemeente.laag++;
+      else if (record.risiconiveau === 'matig') buitenGemeente.matig++;
+      else if (record.risiconiveau === 'hoog') buitenGemeente.hoog++;
+      
+      // Maak een aparte "buiten gemeente" groep
+      const kernId = 'BUITEN';
+      const key = `${kernId}-${jaar}-${maand}-${leeftijd}-${geslacht}`;
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          kern: 'BUITEN',
+          kernNaam: 'Buiten gemeente',
+          wijk: 'BUITEN',
+          jaar,
+          maand,
+          maandNaam: MAANDEN.find(m => m.id === maand)?.kort || '',
+          leeftijd,
+          geslacht,
+          tests: 0,
+          laag: 0,
+          matig: 0,
+          hoog: 0,
+        };
+      }
+      
+      grouped[key].tests++;
+      if (record.risiconiveau === 'laag') grouped[key].laag++;
+      else if (record.risiconiveau === 'matig') grouped[key].matig++;
+      else if (record.risiconiveau === 'hoog') grouped[key].hoog++;
+      
+      return; // Ga naar volgende record
+    }
+    
+    // Bepaal kern op basis van woonplaats (case-insensitive)
+    const woonplaatsKey = OUDE_IJSSELSTREEK_PLAATSEN.find(
+      plaats => plaats.toLowerCase() === (record.woonplaats || '').toLowerCase()
+    );
+    const kernId = WOONPLAATS_NAAR_KERN[woonplaatsKey] || 'K08';
+    const kern = KERNEN.find(k => k.id === kernId) || KERNEN[7];
     
     const key = `${kernId}-${jaar}-${maand}-${leeftijd}-${geslacht}`;
     
@@ -346,6 +401,11 @@ const transformeerSupabaseData = (supabaseData) => {
     else if (record.risiconiveau === 'matig') grouped[key].matig++;
     else if (record.risiconiveau === 'hoog') grouped[key].hoog++;
   });
+  
+  // Log info over buiten gemeente
+  if (buitenGemeente.totaal > 0) {
+    console.log(`Tests buiten gemeente Oude IJsselstreek: ${buitenGemeente.totaal}`);
+  }
   
   return Object.values(grouped);
 };
@@ -1379,18 +1439,31 @@ export default function ValrisicoDashboard() {
   }, [filters, wijk, activeData]);
 
   const stats = useMemo(() => {
+    // Filter eerst data BINNEN de gemeente voor kern-statistieken
+    const dataInGemeente = gefilterdData.filter(d => d.wijk !== 'BUITEN');
+    const dataBuitenGemeente = gefilterdData.filter(d => d.wijk === 'BUITEN');
+    
+    // Totalen inclusief buiten gemeente
     const tests = gefilterdData.reduce((a, d) => a + d.tests, 0);
     const laag = gefilterdData.reduce((a, d) => a + d.laag, 0);
     const matig = gefilterdData.reduce((a, d) => a + d.matig, 0);
     const hoog = gefilterdData.reduce((a, d) => a + d.hoog, 0);
     
+    // Buiten gemeente apart
+    const buitenGemeente = {
+      tests: dataBuitenGemeente.reduce((a, d) => a + d.tests, 0),
+      laag: dataBuitenGemeente.reduce((a, d) => a + d.laag, 0),
+      matig: dataBuitenGemeente.reduce((a, d) => a + d.matig, 0),
+      hoog: dataBuitenGemeente.reduce((a, d) => a + d.hoog, 0),
+    };
+    
     // Bepaal welke kernen in de selectie zitten op basis van wijk filter
     const kernenInWijk = KERNEN.filter(k => wijk === 'alle' || k.wijk === wijk);
     const inw65plus = kernenInWijk.reduce((a, k) => a + k.inw65plus, 0);
     
-    // Per kern statistieken - alleen kernen in de geselecteerde wijk(en)
+    // Per kern statistieken - alleen kernen in de geselecteerde wijk(en), EXCLUSIEF buiten gemeente
     const perKern = kernenInWijk.map(k => {
-      const kernData = gefilterdData.filter(d => d.kern === k.id);
+      const kernData = dataInGemeente.filter(d => d.kern === k.id);
       return {
         kern: k.id, 
         naam: k.naam, 
@@ -1403,11 +1476,14 @@ export default function ValrisicoDashboard() {
       };
     });
     
-    // Bereik = tests / inwoners 65+
-    const bereik = inw65plus > 0 ? Math.round((tests / inw65plus) * 100) : 0;
+    // Bereik berekening alleen op basis van gemeente data
+    const testsInGemeente = dataInGemeente.reduce((a, d) => a + d.tests, 0);
+    const bereik = inw65plus > 0 ? Math.round((testsInGemeente / inw65plus) * 100) : 0;
     
     return {
       tests, laag, matig, hoog,
+      testsInGemeente,
+      buitenGemeente,
       pLaag: tests > 0 ? Math.round(laag / tests * 100) : 0,
       pMatig: tests > 0 ? Math.round(matig / tests * 100) : 0,
       pHoog: tests > 0 ? Math.round(hoog / tests * 100) : 0,
@@ -1433,7 +1509,7 @@ export default function ValrisicoDashboard() {
     const perLeeftijd = ['65-74', '75-84', '85+'].map(l => {
       const data = gefilterdData.filter(d => d.leeftijd === l);
       return {
-        groep: `${l} jaar`,
+        groep: l === '85+' ? '85 jaar en ouder' : `${l} jaar`,
         tests: data.reduce((a, d) => a + d.tests, 0),
         laag: data.reduce((a, d) => a + d.laag, 0),
         matig: data.reduce((a, d) => a + d.matig, 0),
