@@ -1,5 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, LineChart, Line } from 'recharts';
+
+// =============================================================================
+// SUPABASE CONFIGURATIE
+// =============================================================================
+const SUPABASE_URL = 'https://bggavoacfhmxcbeiixjf.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_nnGd9pTnIuI92K9K_zZt-w_1Qb0fug6';
+
+// Data bron toggle: 'supabase' voor echte data, 'dummy' voor test data
+const DATA_BRON = 'supabase';
 
 // =============================================================================
 // ZLIMTHUIS HUISSTIJL - "Veilig wonen begint met inzicht"
@@ -259,6 +268,87 @@ const genereerTestData = () => {
 };
 
 const TESTDATA = genereerTestData();
+
+// =============================================================================
+// WOONPLAATS NAAR KERN MAPPING (voor Supabase data)
+// =============================================================================
+const WOONPLAATS_NAAR_KERN = {
+  'Varsseveld': 'K01',
+  'Westendorp': 'K02',
+  'Sinderen': 'K03',
+  'Terborg': 'K04',
+  'Silvolde': 'K05',
+  'Heelweg': 'K06',
+  'Bontebrug': 'K07',
+  'Ulft': 'K08',
+  'Etten': 'K09',
+  'Gendringen': 'K10',
+  'Netterden': 'K11',
+  'Megchelen': 'K12',
+  'Breedenbroek': 'K13',
+  'Varsselder': 'K14',
+  'Voorst': 'K15',
+  'Kilder': 'K10', // Valt onder Gendringen
+  'IJzerlo': 'K10', // Valt onder Gendringen
+};
+
+// Leeftijd mapping van valrisicotest naar dashboard formaat
+const LEEFTIJD_MAPPING = {
+  '65-69': '65-74',
+  '70-74': '65-74',
+  '75-79': '75-84',
+  '80-84': '75-84',
+  '85-89': '85+',
+  '90+': '85+',
+};
+
+// Transformeer Supabase data naar TESTDATA formaat
+const transformeerSupabaseData = (supabaseData) => {
+  // Groepeer per kern/jaar/maand/leeftijd/geslacht
+  const grouped = {};
+  
+  supabaseData.forEach(record => {
+    const datum = new Date(record.created_at);
+    const jaar = datum.getFullYear();
+    const maand = datum.getMonth() + 1;
+    
+    // Bepaal kern op basis van woonplaats
+    const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats] || 'K08'; // Default Ulft
+    const kern = KERNEN.find(k => k.id === kernId) || KERNEN[7];
+    
+    // Map leeftijd naar dashboard categorie
+    const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || '75-84';
+    
+    // Normaliseer geslacht
+    const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
+    
+    const key = `${kernId}-${jaar}-${maand}-${leeftijd}-${geslacht}`;
+    
+    if (!grouped[key]) {
+      grouped[key] = {
+        kern: kernId,
+        kernNaam: kern.naam,
+        wijk: kern.wijk,
+        jaar,
+        maand,
+        maandNaam: MAANDEN.find(m => m.id === maand)?.kort || '',
+        leeftijd,
+        geslacht,
+        tests: 0,
+        laag: 0,
+        matig: 0,
+        hoog: 0,
+      };
+    }
+    
+    grouped[key].tests++;
+    if (record.risiconiveau === 'laag') grouped[key].laag++;
+    else if (record.risiconiveau === 'matig') grouped[key].matig++;
+    else if (record.risiconiveau === 'hoog') grouped[key].hoog++;
+  });
+  
+  return Object.values(grouped);
+};
 
 // Fysio data - alleen wat we weten: aanmeldingen per fysio per maand
 const FYSIO_DATA = [
@@ -1224,16 +1314,69 @@ export default function ValrisicoDashboard() {
     leeftijden: ['65-74', '75-84', '85+'],
     geslachten: ['Man', 'Vrouw'],
   });
+  
+  // Supabase state
+  const [supabaseData, setSupabaseData] = useState([]);
+  const [loading, setLoading] = useState(DATA_BRON === 'supabase');
+  const [error, setError] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  // Fetch data van Supabase
+  const fetchSupabaseData = async () => {
+    if (DATA_BRON !== 'supabase') return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/testresultaten?select=*&order=created_at.desc`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSupabaseData(data);
+      setLastRefresh(new Date());
+    } catch (err) {
+      console.error('Fout bij ophalen data:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSupabaseData();
+    // Ververs elke 5 minuten
+    if (DATA_BRON === 'supabase') {
+      const interval = setInterval(fetchSupabaseData, 5 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, []);
+
+  // Bepaal welke data te gebruiken
+  const activeData = useMemo(() => {
+    if (DATA_BRON === 'supabase' && supabaseData.length > 0) {
+      return transformeerSupabaseData(supabaseData);
+    }
+    return TESTDATA;
+  }, [supabaseData]);
 
   const gefilterdData = useMemo(() => {
-    return TESTDATA.filter(d => 
+    return activeData.filter(d => 
       filters.jaren.includes(d.jaar) &&
       filters.maanden.includes(d.maand) &&
       filters.leeftijden.includes(d.leeftijd) &&
       filters.geslachten.includes(d.geslacht) &&
       (wijk === 'alle' || d.wijk === wijk)
     );
-  }, [filters, wijk]);
+  }, [filters, wijk, activeData]);
 
   const stats = useMemo(() => {
     const tests = gefilterdData.reduce((a, d) => a + d.tests, 0);
@@ -2004,6 +2147,57 @@ export default function ValrisicoDashboard() {
       <FontLoader />
       <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: FONT_FAMILY, color: KLEUREN.tekst, overflow: 'auto' }}>
       
+      {/* LOADING STATE */}
+      {loading && supabaseData.length === 0 && DATA_BRON === 'supabase' && (
+        <div style={{ 
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+          backgroundColor: 'rgba(255,255,255,0.9)', 
+          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+          zIndex: 1000 
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+            <h2 style={{ color: KLEUREN.primair, marginBottom: '8px' }}>Data laden...</h2>
+            <p style={{ color: KLEUREN.tekstSub }}>Testresultaten worden opgehaald uit Supabase</p>
+          </div>
+        </div>
+      )}
+      
+      {/* ERROR STATE */}
+      {error && DATA_BRON === 'supabase' && (
+        <div style={{ 
+          padding: '16px', 
+          margin: '16px', 
+          backgroundColor: KLEUREN.hoogLicht, 
+          border: `1px solid ${KLEUREN.hoog}`,
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <span style={{ fontSize: '24px' }}>⚠️</span>
+          <div>
+            <strong style={{ color: KLEUREN.hoog }}>Fout bij laden data</strong>
+            <p style={{ margin: '4px 0 0', color: KLEUREN.tekstSub, fontSize: '13px' }}>{error}</p>
+          </div>
+          <button 
+            onClick={fetchSupabaseData}
+            style={{ 
+              marginLeft: 'auto',
+              padding: '8px 16px', 
+              backgroundColor: KLEUREN.primair, 
+              color: KLEUREN.wit, 
+              border: 'none', 
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            Opnieuw proberen
+          </button>
+        </div>
+      )}
+      
       {/* STICKY HEADER WRAPPER */}
       <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: KLEUREN.wit, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         {/* HEADER */}
@@ -2018,11 +2212,47 @@ export default function ValrisicoDashboard() {
               />
               <div style={{ borderLeft: `1px solid ${KLEUREN.rand}`, paddingLeft: '12px' }}>
                 <h1 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: KLEUREN.tekst }}>Valrisico Dashboard</h1>
-                <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
+                <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>
+                  Gemeente Oude IJsselstreek
+                  {DATA_BRON === 'supabase' && (
+                    <span style={{ marginLeft: '8px', color: KLEUREN.primair }}>
+                      • Live data {supabaseData.length > 0 && `(${supabaseData.length} tests)`}
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Data status en refresh */}
+              {DATA_BRON === 'supabase' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {lastRefresh && (
+                    <span style={{ fontSize: '10px', color: KLEUREN.tekstLicht }}>
+                      Bijgewerkt: {lastRefresh.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  <button 
+                    onClick={fetchSupabaseData}
+                    disabled={loading}
+                    style={{ 
+                      padding: '5px 10px', 
+                      borderRadius: '5px', 
+                      border: `1px solid ${KLEUREN.rand}`, 
+                      backgroundColor: loading ? KLEUREN.achtergrond : KLEUREN.wit, 
+                      color: KLEUREN.tekstSub,
+                      fontSize: '11px', 
+                      cursor: loading ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    {loading ? '⏳' : '🔄'} {loading ? 'Laden...' : 'Ververs'}
+                  </button>
+                </div>
+              )}
+              
               <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
                 style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '12px', color: KLEUREN.tekst, cursor: 'pointer' }}>
                 <option value="alle">Alle wijken</option>
