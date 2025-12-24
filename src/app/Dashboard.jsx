@@ -219,14 +219,14 @@ const FYSIO_DATA = [
 
 // Risicovragen - labels en metadata (percentages worden berekend uit Supabase)
 const RISICO_VRAGEN_META = [
-  { id: 1, key: 'v1_gevallen', label: 'Gevallen afgelopen jaar', toelichting: 'Belangrijkste voorspeller voor toekomstige vallen.' },
-  { id: 2, key: 'v2_bang_vallen', label: 'Bang om te vallen', toelichting: 'Valangst kan leiden tot vermijdingsgedrag.' },
-  { id: 3, key: 'v3_moeite_bewegen', label: 'Moeite met bewegen', toelichting: 'Mobiliteitsproblemen verhogen valrisico.' },
-  { id: 4, key: 'v4_verwondingen', label: 'Verwondingen bij val', toelichting: 'Ernst van eerdere vallen.' },
-  { id: 5, key: 'v5_vaker_gevallen', label: 'Meerdere keren gevallen', toelichting: 'Herhaald vallen duidt op structureel risico.' },
-  { id: 6, key: 'v6_flauwgevallen', label: 'Flauwgevallen', toelichting: 'Kan wijzen op onderliggende aandoening.' },
-  { id: 7, key: 'v7_zelf_opstaan', label: 'Kon niet zelf opstaan', toelichting: 'Indicator voor kwetsbaarheid.' },
-  { id: 8, key: 'v8_taken_zelf', label: 'Moeite met dagelijkse taken', toelichting: 'Functionele beperkingen.' },
+  { id: 1, key: 'v1_gevallen', label: 'Gevallen afgelopen jaar', toelichting: 'Belangrijkste voorspeller voor toekomstige vallen. Percentage dat "ja" antwoordde.' },
+  { id: 2, key: 'v2_bang_vallen', label: 'Bang om te vallen', toelichting: 'Alleen gevraagd aan niet-vallers. Valangst kan leiden tot vermijdingsgedrag.' },
+  { id: 3, key: 'v3_moeite_bewegen', label: 'Moeite met bewegen', toelichting: 'Alleen gevraagd aan niet-vallers zonder valangst. Mobiliteitsproblemen verhogen valrisico.' },
+  { id: 4, key: 'v4_verwondingen', label: 'Verwondingen bij val', toelichting: 'Alleen gevraagd aan vallers. Ernst van eerdere vallen.' },
+  { id: 5, key: 'v5_vaker_gevallen', label: 'Meerdere keren gevallen', toelichting: 'Alleen gevraagd aan vallers. Herhaald vallen duidt op structureel risico.' },
+  { id: 6, key: 'v6_flauwgevallen', label: 'Flauwgevallen bij val', toelichting: 'Alleen gevraagd aan vallers. Kan wijzen op onderliggende aandoening.' },
+  { id: 7, key: 'v7_zelf_opstaan', label: 'Kon zelf opstaan na val', toelichting: 'Alleen gevraagd aan vallers. "Ja" = kon zelf opstaan (positief).' },
+  { id: 8, key: 'v8_taken_zelf', label: 'Kan dagelijkse taken zelf', toelichting: 'Gevraagd aan vallers en mensen met valangst/moeite bewegen. "Ja" = kan taken zelf (positief).' },
 ];
 
 // Preventievragen - labels en metadata (percentages worden berekend uit Supabase)
@@ -2102,10 +2102,9 @@ export default function ValrisicoDashboard() {
               <Card>
                 <CardTitle sub="Percentage en aantallen per vraag">Prevalentie per risicofactor</CardTitle>
                 {risicofactorenData.map(f => {
-                  // Bereken aantallen op basis van totaal tests en basisPerc
-                  const totaalTests = stats.tests;
-                  const ondervraagd = f.basisPerc ? Math.round(totaalTests * (f.basisPerc / 100)) : totaalTests;
-                  const aantalJa = Math.round(ondervraagd * (f.perc / 100));
+                  // Gebruik de echte beantwoord en ja aantallen uit de data
+                  const ondervraagd = f.beantwoord;
+                  const aantalJa = f.ja;
                   const kleur = f.perc > 50 ? KLEUREN.hoog : f.perc > 30 ? KLEUREN.matig : KLEUREN.primair;
                   
                   return (
@@ -2942,75 +2941,47 @@ export default function ValrisicoDashboard() {
                 const fysioDoel = 60;
                 const fysioPositief = fysioConversie >= fysioDoel;
                 
+                // Woningaanpassingen: percentage dat woning heeft aangepast
+                const woningAangepast = 100 - aanbevelingenTeksten.woningprobleem;
+                const woningDoel = 70;
+                const woningPositief = woningAangepast >= woningDoel;
+                
                 const aanbevelingen = [
                   { 
-                    id: 'beweging',
-                    titel: aanbevelingenTeksten.beweegPositief ? 'Beweegprogramma\'s ✓' : 'Beweegprogramma\'s opschalen', 
-                    icon: aanbevelingenTeksten.beweegPositief ? '✅' : '🏃', 
-                    positief: aanbevelingenTeksten.beweegPositief,
-                    score: aanbevelingenTeksten.beweegPositief ? 100 : aanbevelingenTeksten.beweegprobleem, // Lager = urgenter
-                    probleem: aanbevelingenTeksten.beweegPositief 
-                      ? `${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers beweegt regelmatig - boven het doel van ${aanbevelingenTeksten.beweegDoel}%!`
-                      : `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet regelmatig balansoefeningen (doel: ${aanbevelingenTeksten.beweegDoel}%).`,
-                    onderbouwing: aanbevelingenTeksten.beweegAdvies,
-                    acties: aanbevelingenTeksten.beweegPositief
-                      ? [
-                          'Continueer huidige beweegprogramma\'s',
-                          'Deel succesverhalen met andere gemeenten',
-                          'Monitor langetermijn resultaten',
-                          'Versterk samenwerking met sportverenigingen'
-                        ]
-                      : aanbevelingenTeksten.prioriteitGroep === '85+'
-                      ? [
-                          'Thuisoefenprogramma met begeleiding aan huis',
-                          'Persoonlijke valpreventiecoach voor 85-plussers',
-                          'Samenwerking met wijkverpleging',
-                          'Eenvoudige oefeningen met stoel en handgreep'
-                        ]
-                      : [
-                          'Uitbreiden cursusaanbod "In Balans" en "Vallen Verleden Tijd"',
-                          'Thuisoefenprogramma met instructievideo\'s voor minder mobielen',
-                          'Beweegtuinen in kernen met hoog risico',
-                          'Samenwerking met lokale sportverenigingen'
-                        ],
-                    kpi: aanbevelingenTeksten.beweegPositief 
-                      ? `Behaald: ${aanbevelingenTeksten.beweegprobleem}% beweegt regelmatig (doel was ${aanbevelingenTeksten.beweegDoel}%)`
-                      : `Doel: ${aanbevelingenTeksten.beweegDoel}% van de geteste personen beweegt regelmatig`,
-                    verantwoordelijk: 'GGD / Welzijnsorganisatie / Fysiotherapeuten'
-                  },
-                  { 
                     id: 'woning',
-                    titel: aanbevelingenTeksten.woningPositief ? 'Woningveiligheid ✓' : 'Woningaanpassingen stimuleren', 
-                    icon: aanbevelingenTeksten.woningPositief ? '✅' : '🏠', 
-                    positief: aanbevelingenTeksten.woningPositief,
-                    score: aanbevelingenTeksten.woningPositief ? 100 : (100 - aanbevelingenTeksten.woningprobleem), // Lager = urgenter
-                    probleem: aanbevelingenTeksten.woningPositief
-                      ? `${100 - aanbevelingenTeksten.woningprobleem}% heeft een veilige woonomgeving - boven het doel van ${aanbevelingenTeksten.woningDoel}%!`
-                      : `${aanbevelingenTeksten.woningprobleem}% heeft nog geen veilige woonomgeving (doel: max ${100 - aanbevelingenTeksten.woningDoel}%).`,
-                    onderbouwing: aanbevelingenTeksten.woningAdvies,
-                    acties: aanbevelingenTeksten.woningPositief
+                    titel: woningPositief ? 'Woningaanpassingen ✓' : 'Woningaanpassingen stimuleren', 
+                    icon: woningPositief ? '✅' : '🏠', 
+                    positief: woningPositief,
+                    score: woningPositief ? 100 : woningAangepast, // Lager = urgenter
+                    probleem: woningPositief
+                      ? `${woningAangepast}% van de geteste 65-plussers heeft de woning aangepast - boven het doel van ${woningDoel}%!`
+                      : `Slechts ${woningAangepast}% van de geteste 65-plussers heeft de woning aangepast (doel: ${woningDoel}%).`,
+                    onderbouwing: woningPositief
+                      ? `Uitstekend resultaat! De voorlichting en subsidies werken. Focus nu op de resterende ${100 - woningAangepast}%.`
+                      : `Nog ${woningDoel - woningAangepast}% te gaan. Woningaanpassingen zoals beugels, antislipmatten en betere verlichting verlagen het valrisico aanzienlijk.`,
+                    acties: woningPositief
                       ? [
-                          'Blijf woningscans actief aanbieden',
+                          'Blijf voorlichting geven over woningaanpassingen',
                           'Focus op de resterende risicogroep',
-                          'Evalueer effectiviteit van aanpassingen',
-                          'Deel best practices met andere gemeenten'
+                          'Evalueer welke aanpassingen het meest effectief zijn',
+                          'Deel succesverhalen met bewoners'
                         ]
                       : aanbevelingenTeksten.prioriteitGroep === '85+'
                       ? [
                           'Proactieve huisbezoeken door wijkverpleging',
-                          'Woningscan aan huis met directe begeleiding',
-                          'Subsidieregeling voor aanpassingen via WMO',
-                          'Directe levering en installatie van hulpmiddelen'
+                          'Directe hulp bij uitvoeren van aanpassingen',
+                          'Subsidieregeling voor aanpassingen via WMO promoten',
+                          'Samenwerking met mantelzorgers voor uitvoering'
                         ]
                       : [
-                          'Gratis woningscans aanbieden aan hoog-risico groep',
-                          'Huisbezoeken voor 85+ en minder mobielen',
-                          'Informatiebijeenkomsten over woningaanpassingen per kern',
-                          'Subsidieregeling voor kleine aanpassingen via WMO'
+                          'Voorlichting over eenvoudige woningaanpassingen',
+                          'Gratis adviesgesprek aan huis aanbieden',
+                          'Informatiebijeenkomsten per kern organiseren',
+                          'Subsidieregeling WMO actief onder de aandacht brengen'
                         ],
-                    kpi: aanbevelingenTeksten.woningPositief
-                      ? `Behaald: ${100 - aanbevelingenTeksten.woningprobleem}% veilige woonomgeving (doel was ${aanbevelingenTeksten.woningDoel}%)`
-                      : `Doel: ${aanbevelingenTeksten.woningDoel}% heeft veilige woonomgeving`,
+                    kpi: woningPositief
+                      ? `Behaald: ${woningAangepast}% heeft woning aangepast (doel was ${woningDoel}%)`
+                      : `Doel: ${woningDoel}% van de geteste personen past woning aan`,
                     verantwoordelijk: 'Gemeente WMO / Woningcorporaties / Thuiszorg'
                   },
                   { 
