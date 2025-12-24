@@ -7,9 +7,6 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 const SUPABASE_URL = 'https://bggavoacfhmxcbeiixjf.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_nnGd9pTnIuI92K9K_zZt-w_1Qb0fug6';
 
-// Data bron toggle: 'supabase' voor echte data, 'dummy' voor test data
-const DATA_BRON = 'supabase';
-
 // =============================================================================
 // ZLIMTHUIS HUISSTIJL - "Veilig wonen begint met inzicht"
 // =============================================================================
@@ -118,156 +115,6 @@ const KERNEN = [
   { id: 'K14', naam: 'Varsselder', wijk: 'WK150903', x: 48, y: 92, inw65plus: 155 },
   { id: 'K15', naam: 'Voorst', wijk: 'WK150903', x: 28, y: 78, inw65plus: 115 },
 ];
-
-// Gedetailleerde testdata per jaar, maand, leeftijd, geslacht en kern
-const genereerTestData = () => {
-  const data = [];
-  let id = 1;
-  
-  // Wijk-specifieke BEREIK factoren (hoeveel % van inwoners doet test)
-  // Dit zorgt voor verschillen in bereik per wijk
-  const wijkBereikFactor = {
-    'WK150900': 1.15,  // Varsseveld - actieve wijk, hoger bereik
-    'WK150901': 0.85,  // Silvolde-Terborg - lager bereik
-    'WK150902': 1.25,  // Ulft-Etten - zeer actief, hoogste bereik
-    'WK150903': 0.75,  // Overig Gendringen - verspreid, moeilijker te bereiken
-  };
-  
-  // Wijk-specifieke RISICO factoren (hoe hoog is valrisico)
-  const wijkRisicoFactor = {
-    'WK150900': 0.92,  // Varsseveld - lager risico (jongere populatie)
-    'WK150901': 1.08,  // Silvolde-Terborg - hoger risico
-    'WK150902': 1.15,  // Ulft-Etten - hoogste risico (oudere populatie)
-    'WK150903': 0.95,  // Overig Gendringen - gemiddeld
-  };
-  
-  // Kern-specifieke variatie voor BEREIK
-  const kernBereikVariatie = {
-    'K01': 1.10, 'K02': 0.85, 'K03': 0.75, 'K04': 1.20, 'K05': 0.90,
-    'K06': 0.70, 'K07': 0.65, 'K08': 1.30, 'K09': 1.05, 'K10': 0.80,
-    'K11': 0.60, 'K12': 0.95, 'K13': 1.15, 'K14': 0.88, 'K15': 0.55,
-  };
-  
-  // Kern-specifieke variatie voor RISICO
-  const kernRisicoVariatie = {
-    'K01': 0.95, 'K02': 1.05, 'K03': 1.12, 'K04': 0.88, 'K05': 1.02,
-    'K06': 1.18, 'K07': 1.25, 'K08': 0.92, 'K09': 0.98, 'K10': 1.08,
-    'K11': 1.30, 'K12': 1.15, 'K13': 0.85, 'K14': 1.04, 'K15': 1.22,
-  };
-  
-  // Jaar-specifieke groei (programma wordt bekender)
-  const jaarGroei = { 2023: 0.70, 2024: 1.10, 2025: 1.20 };
-  
-  KERNEN.forEach(kern => {
-    const wijkBereik = wijkBereikFactor[kern.wijk] || 1.0;
-    const wijkRisico = wijkRisicoFactor[kern.wijk] || 1.0;
-    const kernBereik = kernBereikVariatie[kern.id] || 1.0;
-    const kernRisico = kernRisicoVariatie[kern.id] || 1.0;
-    
-    // Basis bereik varieert nu per kern: van ~8% tot ~18% per jaar
-    const basisBereikPerJaar = 0.10 * wijkBereik * kernBereik; // ~10% basis, maar varieert
-    const basisPerJaar = kern.inw65plus * basisBereikPerJaar;
-    
-    JAREN.forEach(jaar => {
-      const jaarFactor = jaarGroei[jaar] || 1.0;
-      const jaarTests = Math.floor(basisPerJaar * jaarFactor);
-      
-      // Verdeel over maanden (niet uniform - meer in herfst, Week tegen Vallen)
-      const maandVerdeling = MAANDEN.map(m => {
-        if (jaar === 2025 && m.id > 11) return 0; // Tot november 2025
-        // Seizoenspatroon met meer variatie
-        if ([9, 10].includes(m.id)) return 1.6; // Herfst piek (Week tegen Vallen)
-        if ([11].includes(m.id)) return 1.3;
-        if ([7, 8].includes(m.id)) return 0.5; // Zomer dip
-        if ([12, 1, 2].includes(m.id)) return 0.8; // Winter lager
-        return 1.0;
-      });
-      const totaalFactor = maandVerdeling.reduce((a, b) => a + b, 0);
-      
-      MAANDEN.forEach((maand, idx) => {
-        if (jaar === 2025 && maand.id > 11) return;
-        
-        const maandTests = Math.floor(jaarTests * (maandVerdeling[idx] / totaalFactor));
-        if (maandTests === 0) return;
-        
-        ['65-74', '75-84', '85+'].forEach(leeftijd => {
-          // Leeftijdsverdeling varieert per wijk (sommige wijken hebben oudere populatie)
-          let leeftijdFactor;
-          if (leeftijd === '65-74') {
-            leeftijdFactor = 0.48 + (wijkRisico < 1 ? 0.05 : -0.03); // Jongere wijken meer 65-74
-          } else if (leeftijd === '75-84') {
-            leeftijdFactor = 0.35;
-          } else {
-            leeftijdFactor = 0.17 + (wijkRisico > 1.1 ? 0.05 : -0.02); // Oudere wijken meer 85+
-          }
-          
-          const leeftijdTests = Math.max(0, Math.floor(maandTests * leeftijdFactor));
-          if (leeftijdTests === 0) return;
-          
-          ['Man', 'Vrouw'].forEach(geslacht => {
-            // Geslachtsverdeling varieert ook per wijk en leeftijd
-            let geslachtFactor;
-            if (geslacht === 'Vrouw') {
-              // Vrouwen doen vaker mee, vooral bij oudere leeftijdsgroepen
-              geslachtFactor = leeftijd === '85+' ? 0.65 : leeftijd === '75-84' ? 0.58 : 0.54;
-            } else {
-              geslachtFactor = leeftijd === '85+' ? 0.35 : leeftijd === '75-84' ? 0.42 : 0.46;
-            }
-            
-            const tests = Math.max(0, Math.floor(leeftijdTests * geslachtFactor));
-            if (tests === 0) return;
-            
-            // RISICO berekening met alle factoren
-            let hoogBasis = leeftijd === '85+' ? 0.50 : leeftijd === '75-84' ? 0.32 : 0.18;
-            let matigBasis = leeftijd === '85+' ? 0.30 : leeftijd === '75-84' ? 0.36 : 0.34;
-            
-            // Mannen hebben 12% hoger risico op hoog valrisico
-            if (geslacht === 'Man') {
-              hoogBasis *= 1.12;
-              matigBasis *= 0.92;
-            }
-            
-            // Pas wijk en kern risicofactoren toe
-            hoogBasis *= wijkRisico * kernRisico;
-            matigBasis *= (wijkRisico * 0.5 + 0.5); // Matig risico minder beïnvloed
-            
-            // Jaar effect: risico daalt iets door preventie-inspanningen
-            if (jaar === 2024) hoogBasis *= 0.97;
-            if (jaar === 2025) hoogBasis *= 0.94;
-            
-            // Zorg dat percentages realistisch blijven
-            const hoogKans = Math.min(0.68, Math.max(0.12, hoogBasis));
-            const matigKans = Math.min(0.45, Math.max(0.25, matigBasis));
-            
-            const hoog = Math.floor(tests * hoogKans);
-            const matig = Math.floor(tests * matigKans);
-            const laag = Math.max(0, tests - hoog - matig);
-            
-            data.push({
-              id: id++,
-              kern: kern.id,
-              kernNaam: kern.naam,
-              wijk: kern.wijk,
-              jaar,
-              maand: maand.id,
-              maandNaam: maand.kort,
-              leeftijd,
-              geslacht,
-              tests,
-              laag,
-              matig,
-              hoog,
-            });
-          });
-        });
-      });
-    });
-  });
-  
-  return data;
-};
-
-const TESTDATA = genereerTestData();
 
 // =============================================================================
 // WOONPLAATS NAAR KERN MAPPING (voor Supabase data)
@@ -1377,14 +1224,12 @@ export default function ValrisicoDashboard() {
   
   // Supabase state
   const [supabaseData, setSupabaseData] = useState([]);
-  const [loading, setLoading] = useState(DATA_BRON === 'supabase');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
 
   // Fetch data van Supabase
   const fetchSupabaseData = async () => {
-    if (DATA_BRON !== 'supabase') return;
-    
     setLoading(true);
     setError(null);
     
@@ -1414,18 +1259,16 @@ export default function ValrisicoDashboard() {
   useEffect(() => {
     fetchSupabaseData();
     // Ververs elke 5 minuten
-    if (DATA_BRON === 'supabase') {
-      const interval = setInterval(fetchSupabaseData, 5 * 60 * 1000);
-      return () => clearInterval(interval);
-    }
+    const interval = setInterval(fetchSupabaseData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Bepaal welke data te gebruiken
+  // Bepaal welke data te gebruiken - alleen Supabase data
   const activeData = useMemo(() => {
-    if (DATA_BRON === 'supabase' && supabaseData.length > 0) {
+    if (supabaseData.length > 0) {
       return transformeerSupabaseData(supabaseData);
     }
-    return TESTDATA;
+    return []; // Geen data = lege array
   }, [supabaseData]);
 
   const gefilterdData = useMemo(() => {
@@ -2224,7 +2067,7 @@ export default function ValrisicoDashboard() {
       <div style={{ minHeight: '100vh', backgroundColor: KLEUREN.achtergrond, fontFamily: FONT_FAMILY, color: KLEUREN.tekst, overflow: 'auto' }}>
       
       {/* LOADING STATE */}
-      {loading && supabaseData.length === 0 && DATA_BRON === 'supabase' && (
+      {loading && supabaseData.length === 0 && (
         <div style={{ 
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
           backgroundColor: 'rgba(255,255,255,0.9)', 
@@ -2240,7 +2083,7 @@ export default function ValrisicoDashboard() {
       )}
       
       {/* ERROR STATE */}
-      {error && DATA_BRON === 'supabase' && (
+      {error && (
         <div style={{ 
           padding: '16px', 
           margin: '16px', 
@@ -2290,20 +2133,17 @@ export default function ValrisicoDashboard() {
                 <h1 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: KLEUREN.tekst }}>Valrisico Dashboard</h1>
                 <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>
                   Gemeente Oude IJsselstreek
-                  {DATA_BRON === 'supabase' && (
-                    <span style={{ marginLeft: '8px', color: KLEUREN.primair }}>
-                      • Live data {supabaseData.length > 0 && `(${supabaseData.length} tests)`}
-                    </span>
-                  )}
+                  <span style={{ marginLeft: '8px', color: KLEUREN.primair }}>
+                    • Live data {supabaseData.length > 0 && `(${supabaseData.length} tests)`}
+                  </span>
                 </p>
               </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               {/* Data status en refresh */}
-              {DATA_BRON === 'supabase' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {lastRefresh && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {lastRefresh && (
                     <span style={{ fontSize: '10px', color: KLEUREN.tekstLicht }}>
                       Bijgewerkt: {lastRefresh.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -2327,7 +2167,6 @@ export default function ValrisicoDashboard() {
                     {loading ? '⏳' : '🔄'} {loading ? 'Laden...' : 'Ververs'}
                   </button>
                 </div>
-              )}
               
               <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
                 style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '12px', color: KLEUREN.tekst, cursor: 'pointer' }}>
