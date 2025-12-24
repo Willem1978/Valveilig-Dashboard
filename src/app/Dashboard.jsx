@@ -141,7 +141,8 @@ const WOONPLAATS_NAAR_KERN = {
   'IJzerlo': 'K10', // Valt onder Gendringen
 };
 
-// Leeftijd mapping van valrisicotest naar dashboard formaat
+// Leeftijd mapping - valrisicotest slaat al op als '65-74', '75-84', '85+'
+// Deze mapping is voor backwards compatibility met eventuele oude data
 const LEEFTIJD_MAPPING = {
   '65-69': '65-74',
   '70-74': '65-74',
@@ -149,6 +150,10 @@ const LEEFTIJD_MAPPING = {
   '80-84': '75-84',
   '85-89': '85+',
   '90+': '85+',
+  // Directe mapping voor huidige formaat
+  '65-74': '65-74',
+  '75-84': '75-84',
+  '85+': '85+',
 };
 
 // Transformeer Supabase data naar gegroepeerd formaat voor statistieken
@@ -161,23 +166,25 @@ const transformeerSupabaseData = (supabaseData) => {
     const jaar = datum.getFullYear();
     const maand = datum.getMonth() + 1;
     
-    // Bepaal kern op basis van woonplaats
-    const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats] || 'K08'; // Default Ulft
-    const kern = KERNEN.find(k => k.id === kernId) || KERNEN[7];
+    // Bepaal kern op basis van woonplaats - GEEN default meer voor buiten gemeente
+    const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats] || null;
+    const kern = kernId ? KERNEN.find(k => k.id === kernId) : null;
     
-    // Map leeftijd naar dashboard categorie
-    const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || '75-84';
+    // Map leeftijd - gebruik directe waarde als mapping niet bestaat
+    const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd || 'onbekend';
     
     // Normaliseer geslacht
     const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
     
-    const key = `${kernId}-${jaar}-${maand}-${leeftijd}-${geslacht}`;
+    // Gebruik 'EXTERN' als kern voor buiten gemeente
+    const kernIdVoorKey = kernId || 'EXTERN';
+    const key = `${kernIdVoorKey}-${jaar}-${maand}-${leeftijd}-${geslacht}`;
     
     if (!grouped[key]) {
       grouped[key] = {
-        kern: kernId,
-        kernNaam: kern.naam,
-        wijk: kern.wijk,
+        kern: kernIdVoorKey,
+        kernNaam: kern?.naam || 'Buiten gemeente',
+        wijk: kern?.wijk || 'EXTERN',
         jaar,
         maand,
         maandNaam: MAANDEN.find(m => m.id === maand)?.kort || '',
@@ -199,11 +206,11 @@ const transformeerSupabaseData = (supabaseData) => {
   return Object.values(grouped);
 };
 
-// Fysio praktijken - echte namen uit de valrisicotest
+// Fysio praktijken - exacte namen uit de valrisicotest
 const FYSIO_DATA = [
   { id: 'FysioVitaal Ulft', naam: 'FysioVitaal Ulft', kleur: KLEUREN.fysioA, kern: 'K08', locatie: 'Ulft' },
-  { id: 'Fysio Terborg', naam: 'Fysio Terborg', kleur: KLEUREN.fysioB, kern: 'K04', locatie: 'Terborg' },
-  { id: 'Fysio Varsseveld', naam: 'Fysio Varsseveld', kleur: KLEUREN.fysioC, kern: 'K01', locatie: 'Varsseveld' },
+  { id: 'Fysiotherapie Terborg', naam: 'Fysiotherapie Terborg', kleur: KLEUREN.fysioB, kern: 'K04', locatie: 'Terborg' },
+  { id: 'Praktijk Bewegen & Balans', naam: 'Praktijk Bewegen & Balans', kleur: KLEUREN.fysioC, kern: 'K05', locatie: 'Silvolde' },
 ];
 
 // =============================================================================
@@ -554,7 +561,7 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
       const datum = new Date(record.created_at);
       const jaar = datum.getFullYear();
       const maand = datum.getMonth() + 1;
-      const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd || '75-84';
+      const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd;
       const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
       const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats];
       const kernInfo = kernId ? KERNEN.find(k => k.id === kernId) : null;
@@ -1029,7 +1036,7 @@ export default function ValrisicoDashboard() {
       const datum = new Date(record.created_at);
       const jaar = datum.getFullYear();
       const maand = datum.getMonth() + 1;
-      const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd || '75-84';
+      const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd;
       const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
       const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats];
       const kernInfo = kernId ? KERNEN.find(k => k.id === kernId) : null;
@@ -1086,7 +1093,7 @@ export default function ValrisicoDashboard() {
       const datum = new Date(record.created_at);
       const jaar = datum.getFullYear();
       const maand = datum.getMonth() + 1;
-      const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd || '75-84';
+      const leeftijd = LEEFTIJD_MAPPING[record.leeftijd] || record.leeftijd;
       const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
       const kernId = WOONPLAATS_NAAR_KERN[record.woonplaats];
       const kernInfo = kernId ? KERNEN.find(k => k.id === kernId) : null;
