@@ -1,5 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, LineChart, Line } from 'recharts';
+
+// =============================================================================
+// SUPABASE CONFIGURATIE
+// =============================================================================
+const SUPABASE_URL = 'https://bggavoacfhmxcbeiixjf.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_nnGd9pTnIuI92K9K_zZt-w_1Qb0fug6';
 
 // =============================================================================
 // ZLIMTHUIS HUISSTIJL - "Veilig wonen begint met inzicht"
@@ -220,7 +226,7 @@ const genereerTestData = () => {
             
             // Pas wijk en kern risicofactoren toe
             hoogBasis *= wijkRisico * kernRisico;
-            matigBasis *= (wijkRisico * 0.5 + 0.5); // Matig risico minder beÃ¯nvloed
+            matigBasis *= (wijkRisico * 0.5 + 0.5); // Matig risico minder benvloed
             
             // Jaar effect: risico daalt iets door preventie-inspanningen
             if (jaar === 2024) hoogBasis *= 0.97;
@@ -259,6 +265,75 @@ const genereerTestData = () => {
 };
 
 const TESTDATA = genereerTestData();
+
+// =============================================================================
+// WOONPLAATS NAAR KERN MAPPING (voor Supabase data)
+// =============================================================================
+const WOONPLAATS_NAAR_KERN = {
+  'Varsseveld': 'K01', 'Westendorp': 'K02', 'Sinderen': 'K03',
+  'Terborg': 'K04', 'Silvolde': 'K05', 'Heelweg': 'K06',
+  'Bontebrug': 'K07', 'Ulft': 'K08', 'Etten': 'K09',
+  'Gendringen': 'K10', 'Netterden': 'K11', 'Megchelen': 'K12',
+  'Breedenbroek': 'K13', 'Varsselder': 'K14', 'Voorst': 'K15',
+  'Kilder': 'K10', 'IJzerlo': 'K10',
+};
+
+const GEMEENTE_PLAATSEN = Object.keys(WOONPLAATS_NAAR_KERN);
+
+// Transformeer Supabase data naar dashboard formaat
+const transformeerSupabaseData = (supabaseData) => {
+  const grouped = {};
+  
+  supabaseData.forEach(record => {
+    const datum = new Date(record.created_at);
+    const jaar = datum.getFullYear();
+    const maand = datum.getMonth() + 1;
+    
+    // Check of woonplaats in gemeente ligt
+    const woonplaatsLower = (record.woonplaats || '').toLowerCase();
+    const woonplaatsKey = GEMEENTE_PLAATSEN.find(p => p.toLowerCase() === woonplaatsLower);
+    
+    if (!woonplaatsKey) {
+      // Buiten gemeente - aparte groep
+      const leeftijd = record.leeftijd || '75-84';
+      const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
+      const key = `BUITEN-${jaar}-${maand}-${leeftijd}-${geslacht}`;
+      
+      if (!grouped[key]) {
+        grouped[key] = {
+          kern: 'BUITEN', kernNaam: 'Buiten gemeente', wijk: 'BUITEN',
+          jaar, maand, maandNaam: MAANDEN.find(m => m.id === maand)?.kort || '',
+          leeftijd, geslacht, tests: 0, laag: 0, matig: 0, hoog: 0,
+        };
+      }
+      grouped[key].tests++;
+      if (record.risiconiveau === 'laag') grouped[key].laag++;
+      else if (record.risiconiveau === 'matig') grouped[key].matig++;
+      else if (record.risiconiveau === 'hoog') grouped[key].hoog++;
+      return;
+    }
+    
+    const kernId = WOONPLAATS_NAAR_KERN[woonplaatsKey];
+    const kern = KERNEN.find(k => k.id === kernId);
+    const leeftijd = record.leeftijd || '75-84';
+    const geslacht = record.geslacht === 'man' ? 'Man' : record.geslacht === 'vrouw' ? 'Vrouw' : 'Vrouw';
+    const key = `${kernId}-${jaar}-${maand}-${leeftijd}-${geslacht}`;
+    
+    if (!grouped[key]) {
+      grouped[key] = {
+        kern: kernId, kernNaam: kern?.naam || '', wijk: kern?.wijk || '',
+        jaar, maand, maandNaam: MAANDEN.find(m => m.id === maand)?.kort || '',
+        leeftijd, geslacht, tests: 0, laag: 0, matig: 0, hoog: 0,
+      };
+    }
+    grouped[key].tests++;
+    if (record.risiconiveau === 'laag') grouped[key].laag++;
+    else if (record.risiconiveau === 'matig') grouped[key].matig++;
+    else if (record.risiconiveau === 'hoog') grouped[key].hoog++;
+  });
+  
+  return Object.values(grouped);
+};
 
 // Fysio data - alleen wat we weten: aanmeldingen per fysio per maand
 const FYSIO_DATA = [
@@ -388,9 +463,9 @@ const RISICOFACTOREN = [
     label: 'Moeite met bewegen', 
     perc: 31, // % van NIET-VALLERS ZONDER VALANGST
     basis: 'niet-gevallen-geen-angst',
-    basisPerc: 36, // 58% Ã— 62% (geen valangst)
+    basisPerc: 36, // 58%  62% (geen valangst)
     l65: 18, l75: 35, l85: 52, 
-    toelichting: 'Alleen gevraagd aan mensen die NIET zijn gevallen Ã©n GEEN valangst hebben (36% van respondenten).' 
+    toelichting: 'Alleen gevraagd aan mensen die NIET zijn gevallen n GEEN valangst hebben (36% van respondenten).' 
   },
   { 
     id: 4, 
@@ -668,7 +743,7 @@ const FilterPanel = ({ filters, setFilters }) => {
     <Card>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: expanded ? '16px' : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: KLEUREN.tekst }}>ðŸ” Filters</h3>
+          <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: KLEUREN.tekst }}> Filters</h3>
           {actieveFilters && <Badge color={KLEUREN.primair}>Actief</Badge>}
           <span style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>
             Periode: {getPeriodeTekst()}
@@ -679,7 +754,7 @@ const FilterPanel = ({ filters, setFilters }) => {
             <button onClick={resetFilters} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px', backgroundColor: KLEUREN.achtergrond, color: KLEUREN.tekstSub, fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Reset</button>
           )}
           <button onClick={() => setExpanded(!expanded)} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px', backgroundColor: KLEUREN.achtergrond, color: KLEUREN.tekstSub, fontSize: '12px', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-            {expanded ? 'â–² Inklappen' : 'â–¼ Uitklappen'}
+            {expanded ? ' Inklappen' : ' Uitklappen'}
           </button>
         </div>
       </div>
@@ -850,32 +925,32 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
         <StatCard 
           label="Hoog risico in selectie" 
           value={totaalHoogRisico} 
-          sub="PotentiÃ«le doelgroep voor fysiotherapie" 
+          sub="Potentile doelgroep voor fysiotherapie" 
           color={KLEUREN.hoog} 
-          icon="âš ï¸" 
+          icon="" 
         />
         <StatCard 
           label="Aangemeld bij fysio" 
           value={totalen.totaalAanmeldingen} 
           sub={`${aanmeldingsPercentage}% van hoog risico groep`}
           color={KLEUREN.primair} 
-          icon="ðŸ¥" 
+          icon="" 
         />
         <StatCard 
           label="Conversiepercentage" 
           value={aanmeldingsPercentage} 
           unit="%" 
-          sub={`Doel: ${doelPercentage}% â€” Nog ${nogTeBereiken} aan te melden`}
+          sub={`Doel: ${doelPercentage}%  Nog ${nogTeBereiken} aan te melden`}
           color={aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : aanmeldingsPercentage >= 25 ? KLEUREN.matig : KLEUREN.hoog} 
-          icon="ðŸ“ˆ" 
+          icon="" 
         />
         <StatCard 
           label="Voortgang naar doel" 
           value={voortgangNaarDoel} 
           unit="%" 
-          sub={voortgangNaarDoel >= 100 ? "Doelstelling behaald! ðŸŽ‰" : `Nog ${100 - voortgangNaarDoel}% te gaan naar doel`}
+          sub={voortgangNaarDoel >= 100 ? "Doelstelling behaald! " : `Nog ${100 - voortgangNaarDoel}% te gaan naar doel`}
           color={voortgangNaarDoel >= 100 ? KLEUREN.laag : voortgangNaarDoel >= 70 ? KLEUREN.matig : KLEUREN.hoog} 
-          icon="ðŸŽ¯" 
+          icon="" 
         />
       </div>
 
@@ -910,11 +985,11 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '22px',
                       }}>
-                        ðŸ¥
+                        
                       </div>
                       <div>
                         <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: KLEUREN.tekst }}>{fysio.naam}</h4>
-                        <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: KLEUREN.tekstSub }}>ðŸ“ {fysio.locatie}</p>
+                        <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: KLEUREN.tekstSub }}> {fysio.locatie}</p>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -976,7 +1051,7 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
                   {isSelected && <circle cx={kern.x} cy={kern.y} r={r + 3} fill={fysio.kleur} opacity={0.3} />}
                   <circle cx={kern.x} cy={kern.y} r={r} fill={fysio.kleur} stroke="#fff" strokeWidth="2"
                     style={{ cursor: 'pointer' }} onClick={() => setSelectedFysio(isSelected ? null : fysio.id)} />
-                  <text x={kern.x} y={kern.y + 1.5} textAnchor="middle" style={{ fontSize: '5px', fill: '#fff', pointerEvents: 'none' }}>ðŸ¥</text>
+                  <text x={kern.x} y={kern.y + 1.5} textAnchor="middle" style={{ fontSize: '5px', fill: '#fff', pointerEvents: 'none' }}></text>
                   <text x={kern.x} y={kern.y + r + 5} textAnchor="middle" style={{ fontSize: '3.5px', fontWeight: 600, fill: fysio.kleur, pointerEvents: 'none' }}>
                     {fysio.naam}
                   </text>
@@ -1060,7 +1135,7 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
           {/* Conversie indicator */}
           <div style={{ marginTop: '24px', padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: KLEUREN.tekst }}>Conversie hoog risico â†’ fysio</span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: KLEUREN.tekst }}>Conversie hoog risico  fysio</span>
               <span style={{ fontSize: '15px', fontWeight: 700, color: aanmeldingsPercentage >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }}>
                 {aanmeldingsPercentage}% / {doelPercentage}% doel
               </span>
@@ -1071,7 +1146,7 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', fontSize: '11px', color: KLEUREN.tekstSub }}>
               <span>0%</span>
-              <span style={{ fontWeight: 600 }}>â† Doel: {doelPercentage}%</span>
+              <span style={{ fontWeight: 600 }}> Doel: {doelPercentage}%</span>
               <span>100%</span>
             </div>
           </div>
@@ -1104,7 +1179,7 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
           
           <div style={{ padding: '18px', backgroundColor: KLEUREN.achtergrond, borderRadius: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <span style={{ fontSize: '28px' }}>ðŸ“Š</span>
+              <span style={{ fontSize: '28px' }}></span>
               <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>Bereik analyse</h4>
             </div>
             <p style={{ margin: 0, fontSize: '14px', color: KLEUREN.tekstSub, lineHeight: 1.7 }}>
@@ -1119,7 +1194,7 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
           
           <div style={{ padding: '18px', backgroundColor: KLEUREN.achtergrond, borderRadius: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <span style={{ fontSize: '28px' }}>ðŸ“…</span>
+              <span style={{ fontSize: '28px' }}></span>
               <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>Seizoenspatroon</h4>
             </div>
             <p style={{ margin: 0, fontSize: '14px', color: KLEUREN.tekstSub, lineHeight: 1.7 }}>
@@ -1130,7 +1205,7 @@ const FysioAanmeldingenPanel = ({ filters, wijk }) => {
           
           <div style={{ padding: '18px', backgroundColor: KLEUREN.primairLicht, borderRadius: '12px', borderLeft: `4px solid ${KLEUREN.primair}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
-              <span style={{ fontSize: '28px' }}>ðŸ’¡</span>
+              <span style={{ fontSize: '28px' }}></span>
               <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: KLEUREN.primair }}>Aanbevolen acties</h4>
             </div>
             <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: KLEUREN.tekst, lineHeight: 1.8 }}>
@@ -1219,21 +1294,69 @@ export default function ValrisicoDashboard() {
   const [wijk, setWijk] = useState('alle');
   const [kern, setKern] = useState(null);
   const [filters, setFilters] = useState({
-    jaren: JAREN, // Standaard alle jaren
+    jaren: JAREN,
     maanden: MAANDEN.map(m => m.id),
     leeftijden: ['65-74', '75-84', '85+'],
     geslachten: ['Man', 'Vrouw'],
   });
+  
+  // Supabase state
+  const [supabaseData, setSupabaseData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  // Fetch data van Supabase
+  const fetchSupabaseData = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/testresultaten?select=*&order=created_at.desc`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSupabaseData(data);
+      setLastRefresh(new Date());
+    } catch (err) {
+      console.error('Fout bij ophalen data:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSupabaseData();
+    const interval = setInterval(fetchSupabaseData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Gebruik Supabase data als die er is, anders lege array
+  const activeData = useMemo(() => {
+    if (supabaseData.length > 0) {
+      return transformeerSupabaseData(supabaseData);
+    }
+    return [];
+  }, [supabaseData]);
 
   const gefilterdData = useMemo(() => {
-    return TESTDATA.filter(d => 
+    return activeData.filter(d => 
       filters.jaren.includes(d.jaar) &&
       filters.maanden.includes(d.maand) &&
       filters.leeftijden.includes(d.leeftijd) &&
       filters.geslachten.includes(d.geslacht) &&
       (wijk === 'alle' || d.wijk === wijk)
     );
-  }, [filters, wijk]);
+  }, [filters, wijk, activeData]);
 
   const stats = useMemo(() => {
     const tests = gefilterdData.reduce((a, d) => a + d.tests, 0);
@@ -1332,7 +1455,7 @@ export default function ValrisicoDashboard() {
     const l85Data = demografieData.perLeeftijd.find(d => d.groep === '85+ jaar') || { tests: 0, hoog: 0 };
     const ouderenRatio = tests > 0 ? l85Data.tests / tests : 0.15;
     
-    // Basispercentages variÃ«ren op basis van risicoprofiel EN samenstelling
+    // Basispercentages variren op basis van risicoprofiel EN samenstelling
     // Mannen hebben hoger valrisico, ouderen ook
     const geslachtEffect = (manRatio - 0.42) * 15; // Als meer mannen, hoger risico
     const leeftijdEffect = (ouderenRatio - 0.15) * 40; // Als meer ouderen, hoger risico
@@ -1370,7 +1493,7 @@ export default function ValrisicoDashboard() {
         basis: 'niet-gevallen-geen-angst',
         basisPerc: Math.round((100 - basisGevallen) * (100 - basisValangst) / 100),
         l65: 16, l75: 30, l85: 52, 
-        toelichting: `Alleen gevraagd aan mensen zonder val Ã©n zonder valangst.` 
+        toelichting: `Alleen gevraagd aan mensen zonder val n zonder valangst.` 
       },
       { 
         id: 4, 
@@ -1690,8 +1813,8 @@ export default function ValrisicoDashboard() {
       
       // Print controls
       w.document.write('<div class="no-print print-controls">');
-      w.document.write('<button class="print-btn" onclick="window.print()">ðŸ–¨ï¸ Afdrukken / Opslaan als PDF</button>');
-      w.document.write('<button class="print-btn secondary" onclick="window.close()">âœ• Sluiten</button>');
+      w.document.write('<button class="print-btn" onclick="window.print()"> Afdrukken / Opslaan als PDF</button>');
+      w.document.write('<button class="print-btn secondary" onclick="window.close()"> Sluiten</button>');
       w.document.write('</div>');
       
       // ==================== PAGINA 1: VOORBLAD & LEESWIJZER ====================
@@ -1711,7 +1834,7 @@ export default function ValrisicoDashboard() {
       w.document.write('</div>');
       
       w.document.write('<div class="leeswijzer">');
-      w.document.write('<h3>ðŸ“– Leeswijzer</h3>');
+      w.document.write('<h3> Leeswijzer</h3>');
       w.document.write('<div class="leeswijzer-grid">');
       w.document.write('<div class="leeswijzer-item"><div class="page-num">1</div><div><h4>Introductie</h4><p>Voorblad, leeswijzer en context</p></div></div>');
       w.document.write('<div class="leeswijzer-item"><div class="page-num">2</div><div><h4>Kerncijfers</h4><p>Risicoverdeling en belangrijkste statistieken</p></div></div>');
@@ -1721,7 +1844,7 @@ export default function ValrisicoDashboard() {
       w.document.write('</div></div>');
       
       w.document.write('<div class="card" style="border-left:4px solid #0D6560;background:#f0fdf4">');
-      w.document.write('<h3>ðŸ”’ Privacy & gegevensbescherming</h3>');
+      w.document.write('<h3> Privacy & gegevensbescherming</h3>');
       w.document.write('<p style="margin-bottom:8px">Dit rapport voldoet aan de AVG en bevat <strong>geen persoonsgegevens</strong>. Alle data is volledig geanonimiseerd:</p>');
       w.document.write('<ul style="margin-left:18px;font-size:9pt;margin-bottom:0">');
       w.document.write('<li><strong>Niet herleidbaar:</strong> Geen namen, adressen of andere identificerende gegevens</li>');
@@ -1730,25 +1853,25 @@ export default function ValrisicoDashboard() {
       w.document.write('</ul></div>');
       
       w.document.write('<div class="card card-teal">');
-      w.document.write('<h3>â„¹ï¸ Over dit rapport</h3>');
+      w.document.write('<h3> Over dit rapport</h3>');
       w.document.write('<p>Dit rapport is gebaseerd op de VeiligheidNL Valrisicotest, een wetenschappelijk onderbouwde screeningstool. ');
       w.document.write('De test bepaalt op basis van 8 vragen of iemand een laag, matig of hoog valrisico heeft. ');
       w.document.write('Daarnaast worden 6 preventieve gedragingen uitgevraagd.</p>');
       w.document.write('</div>');
       
       w.document.write('<div class="card">');
-      w.document.write('<h3>ðŸ” Geselecteerde data</h3>');
+      w.document.write('<h3> Geselecteerde data</h3>');
       w.document.write('<p><strong>Wijk:</strong> ' + wijkNaam + ' &nbsp;|&nbsp; <strong>Jaren:</strong> ' + jarenTekst + ' &nbsp;|&nbsp; <strong>Leeftijd:</strong> ' + leeftijdTekst + ' &nbsp;|&nbsp; <strong>Geslacht:</strong> ' + geslachtTekst + '</p>');
       w.document.write('</div>');
       
       w.document.write('<div class="page-footer">');
-      w.document.write('<span>Valrisico Dashboard â€¢ Gemeente Oude IJsselstreek</span>');
+      w.document.write('<span>Valrisico Dashboard  Gemeente Oude IJsselstreek</span>');
       w.document.write('<span>Pagina 1 van 5</span>');
       w.document.write('</div></div>');
       
       // ==================== PAGINA 2: KERNCIJFERS ====================
       w.document.write('<div class="page">');
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ“Š</span> Kerncijfers</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Kerncijfers</div>');
       w.document.write('<div class="kpi-grid">');
       w.document.write('<div class="kpi-box teal"><div class="kpi-value teal">' + stats.tests.toLocaleString() + '</div><div class="kpi-label">Totaal tests</div></div>');
       w.document.write('<div class="kpi-box teal"><div class="kpi-value teal">' + stats.inw65plus.toLocaleString() + '</div><div class="kpi-label">65+ inwoners</div></div>');
@@ -1756,7 +1879,7 @@ export default function ValrisicoDashboard() {
       w.document.write('<div class="kpi-box red"><div class="kpi-value red">' + stats.pHoog + '%</div><div class="kpi-label">Hoog risico</div></div>');
       w.document.write('</div></div>');
       
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸŽ¯</span> Risicoverdeling</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Risicoverdeling</div>');
       w.document.write('<div class="three-col">');
       w.document.write('<div class="kpi-box green"><div class="kpi-value green">' + stats.pLaag + '%</div><div class="kpi-label">Laag risico<br>(' + stats.laag.toLocaleString() + ' personen)</div></div>');
       w.document.write('<div class="kpi-box orange"><div class="kpi-value orange">' + stats.pMatig + '%</div><div class="kpi-label">Matig risico<br>(' + stats.matig.toLocaleString() + ' personen)</div></div>');
@@ -1764,26 +1887,26 @@ export default function ValrisicoDashboard() {
       w.document.write('</div>');
       
       w.document.write('<div class="info-box danger" style="margin-top:20px">');
-      w.document.write('<strong>âš ï¸ Belangrijke bevinding:</strong> ' + stats.hoog.toLocaleString() + ' personen (' + stats.pHoog + '%) hebben een hoog valrisico. ');
+      w.document.write('<strong> Belangrijke bevinding:</strong> ' + stats.hoog.toLocaleString() + ' personen (' + stats.pHoog + '%) hebben een hoog valrisico. ');
       w.document.write('Deze groep heeft baat bij intensieve begeleiding door een fysiotherapeut of multidisciplinair valteam.');
       w.document.write('</div></div>');
       
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ“‹</span> Begrippen</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Begrippen</div>');
       w.document.write('<table>');
       w.document.write('<tr><th style="width:25%">Risiconiveau</th><th>Betekenis</th><th style="width:20%">Advies</th></tr>');
       w.document.write('<tr><td><span class="badge badge-green">Laag risico</span></td><td>Geen recente val, geen valangst, geen mobiliteitsproblemen</td><td>Preventieve voorlichting</td></tr>');
-      w.document.write('<tr><td><span class="badge badge-orange">Matig risico</span></td><td>EÃ©n of meer risicofactoren aanwezig, maar geen ernstige val of complicaties</td><td>Groepscursus valpreventie</td></tr>');
+      w.document.write('<tr><td><span class="badge badge-orange">Matig risico</span></td><td>En of meer risicofactoren aanwezig, maar geen ernstige val of complicaties</td><td>Groepscursus valpreventie</td></tr>');
       w.document.write('<tr><td><span class="badge badge-red">Hoog risico</span></td><td>Ernstige val met verwondingen, meerdere vallen, flauwgevallen, of kon niet zelf opstaan</td><td>Doorverwijzing fysiotherapeut</td></tr>');
       w.document.write('</table></div>');
       
       w.document.write('<div class="page-footer">');
-      w.document.write('<span>Valrisico Dashboard â€¢ Gemeente Oude IJsselstreek</span>');
+      w.document.write('<span>Valrisico Dashboard  Gemeente Oude IJsselstreek</span>');
       w.document.write('<span>Pagina 2 van 5</span>');
       w.document.write('</div></div>');
       
       // ==================== PAGINA 3: ANALYSE ====================
       w.document.write('<div class="page">');
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ”¬</span> Risicofactoren</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Risicofactoren</div>');
       w.document.write('<p class="section-subtitle">De valrisicotest meet 8 risicofactoren. Onderstaande tabel toont hoe vaak elke factor voorkomt (gefilterde data).</p>');
       w.document.write('<table>');
       w.document.write('<tr><th>Risicofactor</th><th style="width:15%">Prevalentie</th><th>Toelichting</th></tr>');
@@ -1794,7 +1917,7 @@ export default function ValrisicoDashboard() {
       w.document.write('</table></div>');
       
       w.document.write('<div class="two-col">');
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ›¡ï¸</span> Preventief gedrag</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Preventief gedrag</div>');
       w.document.write('<p class="section-subtitle">Percentage dat preventieve maatregelen toepast. Gap = kans voor interventie.</p>');
       w.document.write('<table>');
       w.document.write('<tr><th>Maatregel</th><th>Doet dit</th><th>Gap</th></tr>');
@@ -1805,7 +1928,7 @@ export default function ValrisicoDashboard() {
       });
       w.document.write('</table></div>');
       
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ“</span> Kernen met hoogste risico</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Kernen met hoogste risico</div>');
       w.document.write('<p class="section-subtitle">Top 5 kernen gesorteerd op percentage hoog risico.</p>');
       w.document.write('<table>');
       w.document.write('<tr><th>Kern</th><th>Tests</th><th>Hoog risico</th></tr>');
@@ -1817,13 +1940,13 @@ export default function ValrisicoDashboard() {
       w.document.write('</div>');
       
       w.document.write('<div class="page-footer">');
-      w.document.write('<span>Valrisico Dashboard â€¢ Gemeente Oude IJsselstreek</span>');
+      w.document.write('<span>Valrisico Dashboard  Gemeente Oude IJsselstreek</span>');
       w.document.write('<span>Pagina 3 van 5</span>');
       w.document.write('</div></div>');
       
       // ==================== PAGINA 4: DOELGROEPEN ====================
       w.document.write('<div class="page">');
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ‘¥</span> Demografische verdeling</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Demografische verdeling</div>');
       w.document.write('<p class="section-subtitle">Risicoverdeling per leeftijdsgroep en geslacht met visuele indicatoren.</p>');
       
       // Progress bar styling toevoegen
@@ -1862,7 +1985,7 @@ export default function ValrisicoDashboard() {
         const pHoog = g.tests > 0 ? Math.round(g.hoog / g.tests * 100) : 0;
         const pMatig = g.tests > 0 ? Math.round(g.matig / g.tests * 100) : 0;
         const pLaag = g.tests > 0 ? Math.round(g.laag / g.tests * 100) : 0;
-        const icon = g.groep === 'Man' ? 'ðŸ‘¨' : 'ðŸ‘©';
+        const icon = g.groep === 'Man' ? '' : '';
         
         w.document.write('<div class="demo-card" style="border-top:4px solid #0D6560">');
         w.document.write('<h4>' + icon + ' ' + g.groep + '</h4>');
@@ -1886,7 +2009,7 @@ export default function ValrisicoDashboard() {
       w.document.write('<span><span style="display:inline-block;width:12px;height:12px;background:#DC2626;border-radius:3px;margin-right:5px"></span>Hoog risico</span>');
       w.document.write('</div></div>');
       
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸŽ¯</span> Aanpak per leeftijdsgroep</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Aanpak per leeftijdsgroep</div>');
       w.document.write('<div class="three-col">');
       
       // 65-74
@@ -1906,32 +2029,32 @@ export default function ValrisicoDashboard() {
       // 85+
       w.document.write('<div class="doelgroep-card" style="border-top:4px solid #DC2626">');
       w.document.write('<h4><span class="badge badge-red">85+ jaar</span> Prioriteit</h4>');
-      w.document.write('<p style="font-size:9pt;color:#64748b;margin-bottom:10px">Hoogste risico Ã©n ernstigste gevolgen. Intensieve begeleiding.</p>');
+      w.document.write('<p style="font-size:9pt;color:#64748b;margin-bottom:10px">Hoogste risico n ernstigste gevolgen. Intensieve begeleiding.</p>');
       w.document.write('<ul><li>Proactieve huisbezoeken</li><li>Persoonlijke valpreventiecoach</li><li>Samenwerking thuiszorg</li></ul>');
       w.document.write('</div>');
       w.document.write('</div></div>');
       
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ“Š</span> Doelgroepen per risiconiveau</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Doelgroepen per risiconiveau</div>');
       w.document.write('<table>');
       w.document.write('<tr><th>Doelgroep</th><th>Omvang</th><th>Aanbevolen aanpak</th><th>Prioriteit</th></tr>');
       w.document.write('<tr><td><strong>Hoog risico</strong></td><td>' + stats.hoog + ' personen</td><td>Doorverwijzing fysiotherapeut, multidisciplinair valteam</td><td><span class="badge badge-red">Hoog</span></td></tr>');
-      w.document.write('<tr><td><strong>Recidiverende vallers</strong></td><td>Â±' + Math.round(stats.hoog * 0.67) + ' personen</td><td>Uitgebreid valonderzoek, medicatiereview, intensief programma</td><td><span class="badge badge-red">Hoog</span></td></tr>');
+      w.document.write('<tr><td><strong>Recidiverende vallers</strong></td><td>' + Math.round(stats.hoog * 0.67) + ' personen</td><td>Uitgebreid valonderzoek, medicatiereview, intensief programma</td><td><span class="badge badge-red">Hoog</span></td></tr>');
       w.document.write('<tr><td><strong>Matig risico</strong></td><td>' + stats.matig + ' personen</td><td>Groepscursussen, voorlichting, online woningscan</td><td><span class="badge badge-orange">Matig</span></td></tr>');
       w.document.write('<tr><td><strong>Laag risico</strong></td><td>' + stats.laag + ' personen</td><td>Preventieve voorlichting, stimuleren actief blijven</td><td><span class="badge badge-green">Laag</span></td></tr>');
       w.document.write('</table></div>');
       
       w.document.write('<div class="page-footer">');
-      w.document.write('<span>Valrisico Dashboard â€¢ Gemeente Oude IJsselstreek</span>');
+      w.document.write('<span>Valrisico Dashboard  Gemeente Oude IJsselstreek</span>');
       w.document.write('<span>Pagina 4 van 5</span>');
       w.document.write('</div></div>');
       
       // ==================== PAGINA 5: AANBEVELINGEN ====================
       w.document.write('<div class="page">');
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸŽ¯</span> Top 3 Prioriteiten</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Top 3 Prioriteiten</div>');
       
       w.document.write('<div class="priority-box prio-1">');
       w.document.write('<div class="priority-number">1</div>');
-      w.document.write('<h3>ðŸƒ Beweegprogramma\'s opschalen</h3>');
+      w.document.write('<h3> Beweegprogramma\'s opschalen</h3>');
       w.document.write('<div class="problem"><strong>Probleem:</strong> Slechts ' + preventiePerc + '% doet minimaal 2x per week evenwichtsoefeningen.</div>');
       w.document.write('<div class="actions"><strong>Aanbevolen acties:</strong>');
       w.document.write('<ul><li>Uitbreiden cursusaanbod "In Balans" en "Vallen Verleden Tijd"</li>');
@@ -1941,7 +2064,7 @@ export default function ValrisicoDashboard() {
       
       w.document.write('<div class="priority-box prio-2">');
       w.document.write('<div class="priority-number">2</div>');
-      w.document.write('<h3>ðŸ  Woningaanpassingen stimuleren</h3>');
+      w.document.write('<h3> Woningaanpassingen stimuleren</h3>');
       w.document.write('<div class="problem"><strong>Probleem:</strong> ' + woningPerc + '% heeft nog geen woningaanpassingen doorgevoerd.</div>');
       w.document.write('<div class="actions"><strong>Aanbevolen acties:</strong>');
       w.document.write('<ul><li>Gratis woningscans aanbieden aan hoog-risico groep</li>');
@@ -1951,7 +2074,7 @@ export default function ValrisicoDashboard() {
       
       w.document.write('<div class="priority-box prio-3">');
       w.document.write('<div class="priority-number">3</div>');
-      w.document.write('<h3>ðŸ¥ Doorverwijzing verbeteren</h3>');
+      w.document.write('<h3> Doorverwijzing verbeteren</h3>');
       w.document.write('<div class="problem"><strong>Probleem:</strong> Onvoldoende doorverwijzing van hoog-risico naar fysiotherapeut.</div>');
       w.document.write('<div class="actions"><strong>Aanbevolen acties:</strong>');
       w.document.write('<ul><li>Directe koppeling testuitslag met huisarts</li>');
@@ -1960,7 +2083,7 @@ export default function ValrisicoDashboard() {
       w.document.write('</div></div>');
       
       w.document.write('<div class="two-col">');
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ“ˆ</span> KPI\'s</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> KPI\'s</div>');
       w.document.write('<table>');
       w.document.write('<tr><th>Indicator</th><th>Huidig</th><th>Doel</th></tr>');
       w.document.write('<tr><td>Percentage hoog risico</td><td>' + stats.pHoog + '%</td><td style="color:#15803D;font-weight:600">25%</td></tr>');
@@ -1969,7 +2092,7 @@ export default function ValrisicoDashboard() {
       w.document.write('<tr><td>Woningscans per jaar</td><td>~80</td><td style="color:#15803D;font-weight:600">200</td></tr>');
       w.document.write('</table></div>');
       
-      w.document.write('<div class="section"><div class="section-title"><span>ðŸ“</span> Vervolgstappen</div>');
+      w.document.write('<div class="section"><div class="section-title"><span></span> Vervolgstappen</div>');
       w.document.write('<ol style="margin-left:18px;font-size:10pt">');
       w.document.write('<li style="margin-bottom:8px">Presenteer bevindingen aan stakeholders (welzijn, zorg, WMO)</li>');
       w.document.write('<li style="margin-bottom:8px">Stel werkgroep valpreventie samen</li>');
@@ -1980,13 +2103,13 @@ export default function ValrisicoDashboard() {
       w.document.write('</div>');
       
       w.document.write('<div class="card card-teal" style="margin-top:15px">');
-      w.document.write('<h3>ðŸ“ž Contact & meer informatie</h3>');
+      w.document.write('<h3> Contact & meer informatie</h3>');
       w.document.write('<p>Dit rapport is gegenereerd met het Valrisico Dashboard. Voor vragen of meer informatie over valpreventie in uw gemeente, ');
       w.document.write('neem contact op met de afdeling WMO of bekijk de website van VeiligheidNL voor landelijke richtlijnen.</p>');
       w.document.write('</div>');
       
       w.document.write('<div class="page-footer">');
-      w.document.write('<span>Valrisico Dashboard â€¢ Gemeente Oude IJsselstreek</span>');
+      w.document.write('<span>Valrisico Dashboard  Gemeente Oude IJsselstreek</span>');
       w.document.write('<span>Pagina 5 van 5</span>');
       w.document.write('</div></div>');
       
@@ -2018,11 +2141,29 @@ export default function ValrisicoDashboard() {
               />
               <div style={{ borderLeft: `1px solid ${KLEUREN.rand}`, paddingLeft: '12px' }}>
                 <h1 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: KLEUREN.tekst }}>Valrisico Dashboard</h1>
-                <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>Gemeente Oude IJsselstreek</p>
+                <p style={{ margin: 0, fontSize: '10px', color: KLEUREN.tekstSub }}>
+                  Gemeente Oude IJsselstreek - Live data ({supabaseData.length} tests)
+                </p>
               </div>
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {/* Refresh knop */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {lastRefresh && (
+                  <span style={{ fontSize: '10px', color: KLEUREN.tekstLicht }}>
+                    {lastRefresh.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+                <button 
+                  onClick={fetchSupabaseData}
+                  disabled={loading}
+                  style={{ padding: '5px 10px', borderRadius: '5px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, color: KLEUREN.tekstSub, fontSize: '11px', cursor: loading ? 'wait' : 'pointer' }}
+                >
+                  {loading ? 'Laden...' : 'Ververs'}
+                </button>
+              </div>
+              
               <select value={wijk} onChange={(e) => { setWijk(e.target.value); setKern(null); }}
                 style={{ padding: '6px 28px 6px 10px', borderRadius: '6px', border: `1px solid ${KLEUREN.rand}`, backgroundColor: KLEUREN.wit, fontSize: '12px', color: KLEUREN.tekst, cursor: 'pointer' }}>
                 <option value="alle">Alle wijken</option>
@@ -2046,7 +2187,7 @@ export default function ValrisicoDashboard() {
                   boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
                 }}
               >
-                ðŸ“„ PDF Rapport
+                PDF Rapport
               </button>
             </div>
           </div>
@@ -2110,13 +2251,13 @@ export default function ValrisicoDashboard() {
         <nav style={{ backgroundColor: KLEUREN.wit, borderBottom: `1px solid ${KLEUREN.rand}`, overflowX: 'auto' }}>
           <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', paddingLeft: '16px', paddingRight: '16px', minWidth: 'max-content' }}>
             {[
-              { id: 'overzicht', label: 'Overzicht', icon: 'ðŸ ' },
-              { id: 'actie', label: 'Aanbevelingen', icon: 'âœ…' },
-              { id: 'risico', label: 'Risicofactoren', icon: 'ðŸ“Š' },
-              { id: 'preventie', label: 'Preventie', icon: 'ðŸ›¡ï¸' },
-              { id: 'demografie', label: 'Demografie', icon: 'ðŸ‘¤' },
-              { id: 'kaart', label: 'Geografisch', icon: 'ðŸ“' },
-              { id: 'fysio', label: 'Doorverwijzingen', icon: 'ðŸƒ' },
+              { id: 'overzicht', label: 'Overzicht', icon: '' },
+              { id: 'actie', label: 'Aanbevelingen', icon: '' },
+              { id: 'risico', label: 'Risicofactoren', icon: '' },
+              { id: 'preventie', label: 'Preventie', icon: '' },
+              { id: 'demografie', label: 'Demografie', icon: '' },
+              { id: 'kaart', label: 'Geografisch', icon: '' },
+              { id: 'fysio', label: 'Doorverwijzingen', icon: '' },
             ].map(t => (
               <TabButton key={t.id} active={tab === t.id} onClick={() => setTab(t.id)}>{t.icon} {t.label}</TabButton>
             ))}
@@ -2142,12 +2283,12 @@ export default function ValrisicoDashboard() {
             </InfoPanel>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-              <StatCard label="Inwoners 65+" value={stats.inw65plus.toLocaleString()} sub="In geselecteerde wijk(en)" icon="ðŸ‘¤" />
-              <StatCard label="Tests afgenomen" value={stats.tests.toLocaleString()} sub={`${stats.bereik}% bereik`} icon="ðŸ“‹" />
-              <StatCard label="Laag risico" value={stats.pLaag} unit="%" sub={`${stats.laag} personen`} color={KLEUREN.laag} icon="âœ“" />
-              <StatCard label="Matig risico" value={stats.pMatig} unit="%" sub={`${stats.matig} personen`} color={KLEUREN.matig} icon="â—" />
+              <StatCard label="Inwoners 65+" value={stats.inw65plus.toLocaleString()} sub="In geselecteerde wijk(en)" icon="" />
+              <StatCard label="Tests afgenomen" value={stats.tests.toLocaleString()} sub={`${stats.bereik}% bereik`} icon="" />
+              <StatCard label="Laag risico" value={stats.pLaag} unit="%" sub={`${stats.laag} personen`} color={KLEUREN.laag} icon="" />
+              <StatCard label="Matig risico" value={stats.pMatig} unit="%" sub={`${stats.matig} personen`} color={KLEUREN.matig} icon="" />
               <StatCard label="Hoog risico" value={stats.pHoog} unit="%" sub={`${stats.hoog} personen`} color={KLEUREN.hoog} icon="!" />
-              <StatCard label="Verhoogd risico" value={stats.matig + stats.hoog} sub="Matig + Hoog" color={KLEUREN.primair} icon="â–²" />
+              <StatCard label="Verhoogd risico" value={stats.matig + stats.hoog} sub="Matig + Hoog" color={KLEUREN.primair} icon="" />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
@@ -2353,7 +2494,7 @@ export default function ValrisicoDashboard() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <span style={{ display: 'inline-block', width: '12px', height: '12px', borderRadius: '3px', backgroundColor: KLEUREN.hoogLicht, border: `1px solid ${KLEUREN.hoog}` }}></span>
-                      <span style={{ color: KLEUREN.tekstSub }}>â‰¥ 50%</span>
+                      <span style={{ color: KLEUREN.tekstSub }}> 50%</span>
                     </div>
                   </div>
                 </Card>
@@ -2362,16 +2503,16 @@ export default function ValrisicoDashboard() {
                   <CardTitle>Kerninterpretatie</CardTitle>
                   <div style={{ fontSize: '13px', lineHeight: 1.7, color: KLEUREN.tekstSub }}>
                     <p style={{ margin: '0 0 12px 0' }}>
-                      <strong style={{ color: KLEUREN.tekst }}>42% is gevallen</strong> â€” van alle geteste 65-plussers. Dit bepaalt welke vervolgvragen worden gesteld.
+                      <strong style={{ color: KLEUREN.tekst }}>42% is gevallen</strong>  van alle geteste 65-plussers. Dit bepaalt welke vervolgvragen worden gesteld.
                     </p>
                     <p style={{ margin: '0 0 12px 0' }}>
-                      <strong style={{ color: KLEUREN.tekst }}>67% viel meerdere keren</strong> â€” van de vallers. Recidive is een belangrijke risicofactor.
+                      <strong style={{ color: KLEUREN.tekst }}>67% viel meerdere keren</strong>  van de vallers. Recidive is een belangrijke risicofactor.
                     </p>
                     <p style={{ margin: '0 0 12px 0' }}>
-                      <strong style={{ color: KLEUREN.tekst }}>38% heeft valangst</strong> â€” van de niet-vallers. Angst leidt tot vermijding en minder bewegen.
+                      <strong style={{ color: KLEUREN.tekst }}>38% heeft valangst</strong>  van de niet-vallers. Angst leidt tot vermijding en minder bewegen.
                     </p>
                     <p style={{ margin: 0 }}>
-                      <strong style={{ color: KLEUREN.tekst }}>19% viel door flauwvallen</strong> â€” van de vallers. Dit vereist medisch onderzoek naar onderliggende oorzaken.
+                      <strong style={{ color: KLEUREN.tekst }}>19% viel door flauwvallen</strong>  van de vallers. Dit vereist medisch onderzoek naar onderliggende oorzaken.
                     </p>
                   </div>
                 </Card>
@@ -2386,13 +2527,13 @@ export default function ValrisicoDashboard() {
             <InfoPanel type="info">
               <strong>Preventief gedrag:</strong> De valrisicotest meet 6 vormen van preventief gedrag die bewezen effectief zijn om vallen te voorkomen. 
               Hoe hoger het percentage, hoe meer mensen deze maatregel al toepassen. De <strong style={{ color: KLEUREN.hoog }}>gap</strong> toont 
-              hoeveel procent dit nog <em>niet</em> doet â€” daar ligt de kans voor interventie.
+              hoeveel procent dit nog <em>niet</em> doet  daar ligt de kans voor interventie.
               <br /><em style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>Percentages passen zich aan op basis van de geselecteerde filters.</em>
             </InfoPanel>
 
             {/* Grafiek - hoogste percentage bovenaan */}
             <Card>
-              <CardTitle sub="Gesorteerd van hoog naar laag â€” onderaan liggen de grootste kansen">Huidige stand preventief gedrag</CardTitle>
+              <CardTitle sub="Gesorteerd van hoog naar laag  onderaan liggen de grootste kansen">Huidige stand preventief gedrag</CardTitle>
               <div style={{ width: '100%', overflowX: 'auto' }}>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart 
@@ -2423,7 +2564,7 @@ export default function ValrisicoDashboard() {
               <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '16px', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
                   <div style={{ width: '14px', height: '14px', borderRadius: '3px', backgroundColor: KLEUREN.laag }} />
-                  <span style={{ color: KLEUREN.tekst }}>â‰¥60% - Op schema</span>
+                  <span style={{ color: KLEUREN.tekst }}>60% - Op schema</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}>
                   <div style={{ width: '14px', height: '14px', borderRadius: '3px', backgroundColor: KLEUREN.matig }} />
@@ -2447,42 +2588,42 @@ export default function ValrisicoDashboard() {
                 // Uitgebreide info per maatregel
                 const details = {
                   1: { // Evenwichtsoefeningen
-                    icon: 'ðŸƒ',
+                    icon: '',
                     probleem: `Slechts ${p.perc}% van de geteste ouderen doet minimaal 2x per week evenwichtsoefeningen.`,
                     onderbouwing: 'Balans- en krachttraining vermindert het valrisico met 30-40%. Dit is de meest effectieve interventie volgens wetenschappelijk onderzoek.',
                     acties: ['Cursussen "In Balans" en "Vallen Verleden Tijd" promoten', 'Thuisoefenprogramma met instructievideo\'s', 'Beweeggroepen bij buurthuizen en sportverenigingen']
                   },
                   2: { // Huisaanpassingen
-                    icon: 'ðŸ ',
+                    icon: '',
                     probleem: `${gap}% heeft nog geen woningaanpassingen gedaan om valrisico te verminderen.`,
                     onderbouwing: 'Woningaanpassingen zoals antislipmatten, betere verlichting en handgrepen kunnen tot 20% van de thuisvallen voorkomen.',
                     acties: ['Woningscan door gecertificeerde aanbieder', 'Subsidieregeling kleine aanpassingen via WMO', 'Voorlichtingsbijeenkomsten per kern']
                   },
                   3: { // Medicijncontrole
-                    icon: 'ðŸ’Š',
+                    icon: '',
                     probleem: `${gap}% laat medicijnen niet jaarlijks controleren op bijwerkingen die vallen kunnen veroorzaken.`,
                     onderbouwing: 'Bepaalde medicijnen (slaap-, kalmeringsmiddelen, bloeddrukverlagend) verhogen valrisico. Regelmatige review kan dit risico verlagen.',
-                    acties: ['Huisartsen en apothekers actief betrekken', 'Medicatiereview bij polyfarmacie (5+ medicijnen)', 'PatiÃ«nten informeren over bijwerkingen']
+                    acties: ['Huisartsen en apothekers actief betrekken', 'Medicatiereview bij polyfarmacie (5+ medicijnen)', 'Patinten informeren over bijwerkingen']
                   },
                   4: { // Eiwitten
-                    icon: 'ðŸ¥›',
+                    icon: '',
                     probleem: `${gap}% eet niet dagelijks voldoende eiwitten voor behoud van spiermassa.`,
                     onderbouwing: 'Eiwitten zijn essentieel voor spierbehoud. Na 70 jaar is extra eiwit nodig om sarcopenie (spierafbraak) tegen te gaan.',
-                    acties: ['Voedingsadvies via diÃ«tist of POH', 'Informatiefolders over eiwitrijke voeding', 'Kookworkshops voor ouderen']
+                    acties: ['Voedingsadvies via ditist of POH', 'Informatiefolders over eiwitrijke voeding', 'Kookworkshops voor ouderen']
                   },
                   5: { // Oogcontrole
-                    icon: 'ðŸ‘ï¸',
+                    icon: '',
                     probleem: `${gap}% laat de ogen niet jaarlijks controleren bij opticien of oogarts.`,
                     onderbouwing: 'Goed zicht helpt om obstakels en oneffenheden tijdig te zien. Veel ouderen hebben een niet-gecorrigeerde visusprobleem.',
                     acties: ['Samenwerking met lokale opticiens', 'Oogscreening bij gezondheidsmarkten', 'Herinneringsbrief voor jaarlijkse controle']
                   },
                   6: { // Schoenen
-                    icon: 'ðŸ‘Ÿ',
+                    icon: '',
                     probleem: `${gap}% draagt geen stevige, goed passende schoenen.`,
                     onderbouwing: 'Goede schoenen geven stabiliteit en verminderen uitglijden. Sloffen en gladde zolen verhogen valrisico aanzienlijk.',
                     acties: ['Voorlichting over schoenenkeuze', 'Podotherapeut inschakelen bij voetproblemen', 'Advies over antislip-sloffen']
                   }
-                }[p.id] || { icon: 'ðŸ“‹', probleem: p.advies, onderbouwing: '', acties: [] };
+                }[p.id] || { icon: '', probleem: p.advies, onderbouwing: '', acties: [] };
                 
                 return (
                   <Card key={p.id} highlight={isKritiek}>
@@ -2598,7 +2739,7 @@ export default function ValrisicoDashboard() {
               })}
               {demografieData.perGeslacht.map((g, i) => {
                 const pHoog = g.tests > 0 ? Math.round(g.hoog / g.tests * 100) : 0;
-                const icon = g.groep === 'Man' ? 'ðŸ‘¨' : 'ðŸ‘©';
+                const icon = g.groep === 'Man' ? '' : '';
                 return (
                   <Card key={`g${i}`}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -2643,7 +2784,7 @@ export default function ValrisicoDashboard() {
                       const pLaag = g.tests > 0 ? Math.round(g.laag / g.tests * 100) : 0;
                       const pMatig = g.tests > 0 ? Math.round(g.matig / g.tests * 100) : 0;
                       const pHoog = g.tests > 0 ? Math.round(g.hoog / g.tests * 100) : 0;
-                      const icon = g.groep === 'Man' ? 'ðŸ‘¨ ' : g.groep === 'Vrouw' ? 'ðŸ‘© ' : '';
+                      const icon = g.groep === 'Man' ? ' ' : g.groep === 'Vrouw' ? ' ' : '';
                       return (
                         <tr key={i} style={{ borderBottom: `1px solid ${KLEUREN.rand}` }}>
                           <td style={{ padding: '12px', fontWeight: 500 }}>{icon}{g.groep}{g.groep.includes('-') || g.groep.includes('+') ? ' jaar' : ''}</td>
@@ -2713,7 +2854,7 @@ export default function ValrisicoDashboard() {
             {/* Analyse per leeftijdsgroep */}
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 600, color: KLEUREN.tekst, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '24px' }}>ðŸ‘¥</span> Analyse per leeftijdsgroep
+                <span style={{ fontSize: '24px' }}></span> Analyse per leeftijdsgroep
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
                 {demografieData.perLeeftijd.map((g, i) => {
@@ -2725,7 +2866,7 @@ export default function ValrisicoDashboard() {
                   // Specifieke aandachtsgebieden per leeftijdsgroep
                   const aandachtData = {
                     '65-74': {
-                      icon: 'ðŸš¶',
+                      icon: '',
                       status: 'preventief',
                       color: KLEUREN.laag,
                       kernprobleem: 'Deze groep heeft relatief laag risico maar vormt de grootste groep. Preventie voorkomt doorgroei naar hoger risico.',
@@ -2737,7 +2878,7 @@ export default function ValrisicoDashboard() {
                       acties: ['Beweeggroepen bij sportverenigingen', 'Informatiebijeenkomsten per kern', 'Online zelftest promoten']
                     },
                     '75-84': {
-                      icon: 'ðŸ§“',
+                      icon: '',
                       status: 'aandacht',
                       color: KLEUREN.matig,
                       kernprobleem: 'Transitiefase met toenemend risico. Veel winst te behalen door gerichte interventies voordat risico verder stijgt.',
@@ -2749,10 +2890,10 @@ export default function ValrisicoDashboard() {
                       acties: ['Groepscursussen valpreventie', 'Samenwerking met huisartsen voor medicatiereview', 'Woningscan aanbieden']
                     },
                     '85+': {
-                      icon: 'ðŸ‘´',
+                      icon: '',
                       status: 'prioriteit',
                       color: KLEUREN.hoog,
-                      kernprobleem: 'Hoogste risico op vallen Ã©n ernstigste gevolgen. Vraagt om intensieve, persoonlijke begeleiding.',
+                      kernprobleem: 'Hoogste risico op vallen n ernstigste gevolgen. Vraagt om intensieve, persoonlijke begeleiding.',
                       aandachtsgebieden: [
                         { titel: 'Multidisciplinair', beschrijving: 'Samenwerking huisarts, fysio, wijkverpleging' },
                         { titel: 'Thuissituatie', beschrijving: 'Huisbezoek voor woningaanpassingen' },
@@ -2872,7 +3013,7 @@ export default function ValrisicoDashboard() {
             {/* Analyse per geslacht */}
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 600, color: KLEUREN.tekst, margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '24px' }}>âš§</span> Analyse per geslacht
+                <span style={{ fontSize: '24px' }}></span> Analyse per geslacht
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
                 {demografieData.perGeslacht.map((g, i) => {
@@ -2883,7 +3024,7 @@ export default function ValrisicoDashboard() {
                   
                   // Specifieke aandachtsgebieden per geslacht
                   const aandacht = isMan ? {
-                    icon: 'ðŸ‘¨',
+                    icon: '',
                     color: KLEUREN.wijk2,
                     kernprobleem: 'Mannen hebben vaak minder sociale contacten en zijn terughoudender in hulp vragen. Ze onderschatten hun valrisico vaker.',
                     aandachtsgebieden: [
@@ -2893,7 +3034,7 @@ export default function ValrisicoDashboard() {
                     ],
                     acties: ['Voorlichting via huisarts en sportverenigingen', 'Mannelijke ambassadeurs inzetten', 'Praktische insteek bij communicatie']
                   } : {
-                    icon: 'ðŸ‘©',
+                    icon: '',
                     color: KLEUREN.wijk3,
                     kernprobleem: 'Vrouwen hebben vaker osteoporose en daardoor ernstiger gevolgen bij een val. Ze vormen ook de meerderheid van de 85+ groep.',
                     aandachtsgebieden: [
@@ -3005,7 +3146,7 @@ export default function ValrisicoDashboard() {
                         <h4 style={{ margin: 0, fontSize: '18px' }}>{k.naam}</h4>
                         <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>{w?.naam}</p>
                       </div>
-                      <button onClick={() => setKern(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: KLEUREN.tekstSub }}>Ã—</button>
+                      <button onClick={() => setKern(null)} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: KLEUREN.tekstSub }}></button>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
                       {[
@@ -3095,7 +3236,7 @@ export default function ValrisicoDashboard() {
               {[
                 { 
                   titel: 'Beweegprogramma\'s opschalen', 
-                  icon: 'ðŸƒ', 
+                  icon: '', 
                   prio: 1,
                   probleem: `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet minimaal 2x per week evenwichtsoefeningen.`,
                   onderbouwing: aanbevelingenTeksten.beweegAdvies,
@@ -3117,7 +3258,7 @@ export default function ValrisicoDashboard() {
                 },
                 { 
                   titel: 'Woningaanpassingen stimuleren', 
-                  icon: 'ðŸ ', 
+                  icon: '', 
                   prio: 2,
                   probleem: `${aanbevelingenTeksten.woningprobleem}% heeft nog geen woningaanpassingen doorgevoerd om valrisico te verminderen.`,
                   onderbouwing: aanbevelingenTeksten.woningAdvies,
@@ -3139,7 +3280,7 @@ export default function ValrisicoDashboard() {
                 },
                 { 
                   titel: 'Doorverwijzing naar fysiotherapie', 
-                  icon: 'ðŸ©º', 
+                  icon: '', 
                   prio: 3,
                   probleem: `Van de ${stats.hoog.toLocaleString()} personen met hoog valrisico in deze selectie is het aanmeldingspercentage bij fysiotherapie nog onvoldoende.`,
                   onderbouwing: aanbevelingenTeksten.fysioAdvies,
@@ -3213,7 +3354,7 @@ export default function ValrisicoDashboard() {
                   </div>
                   
                   <div style={{ padding: '10px 12px', backgroundColor: KLEUREN.laagLicht, borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px' }}>ðŸŽ¯</span>
+                    <span style={{ fontSize: '14px' }}></span>
                     <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.laag, fontWeight: 500 }}>{item.kpi}</p>
                   </div>
                 </Card>
@@ -3230,7 +3371,7 @@ export default function ValrisicoDashboard() {
                     aantal: demografieData.perLeeftijd.find(l => l.groep === '85+ jaar')?.tests || 0,
                     prio: 'hoog',
                     color: KLEUREN.hoog,
-                    icon: 'ðŸ‘´',
+                    icon: '',
                     risico: 'Hoogste valrisico door combinatie van factoren',
                     aanpak: [
                       'Proactieve huisbezoeken door wijkverpleging',
@@ -3244,7 +3385,7 @@ export default function ValrisicoDashboard() {
                     aantal: Math.round(stats.hoog * (risicofactorenData.find(r => r.id === 5)?.perc || 67) / 100),
                     prio: 'hoog',
                     color: KLEUREN.hoog,
-                    icon: 'ðŸ”„',
+                    icon: '',
                     risico: `${risicofactorenData.find(r => r.id === 5)?.perc || 67}% van vallers is meerdere keren gevallen`,
                     aanpak: [
                       'Multidisciplinair valteam (huisarts, fysio, ergo)',
@@ -3258,7 +3399,7 @@ export default function ValrisicoDashboard() {
                     aantal: stats.matig,
                     prio: 'matig',
                     color: KLEUREN.matig,
-                    icon: 'âš¡',
+                    icon: '',
                     risico: `${stats.matig.toLocaleString()} personen met risico op doorgroei naar hoog risico`,
                     aanpak: [
                       'Groepscursussen valpreventie',
@@ -3272,7 +3413,7 @@ export default function ValrisicoDashboard() {
                     aantal: Math.round((stats.tests - stats.laag) * (risicofactorenData.find(r => r.id === 2)?.perc || 38) / 100),
                     prio: 'matig',
                     color: KLEUREN.matig,
-                    icon: 'ðŸ˜°',
+                    icon: '',
                     risico: `${risicofactorenData.find(r => r.id === 2)?.perc || 38}% van niet-vallers heeft valangst`,
                     aanpak: [
                       'Cognitieve gedragstherapie elementen',
@@ -3293,7 +3434,7 @@ export default function ValrisicoDashboard() {
                         <span style={{ fontSize: '24px' }}>{item.icon}</span>
                         <div>
                           <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: KLEUREN.tekst }}>{item.groep}</h4>
-                          <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Â±{item.aantal} personen</p>
+                          <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>{item.aantal} personen</p>
                         </div>
                       </div>
                       <Badge color={item.color}>{item.prio}</Badge>
@@ -3320,7 +3461,7 @@ export default function ValrisicoDashboard() {
               {/* Actuele cijfers - niet als doelen maar als feiten */}
               <div style={{ marginBottom: '24px', padding: '20px', backgroundColor: KLEUREN.primairLicht, borderRadius: '12px', border: `1px solid ${KLEUREN.primair}` }}>
                 <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 600, color: KLEUREN.primair, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>ðŸ“Š</span> Actuele cijfers in geselecteerde periode
+                  <span></span> Actuele cijfers in geselecteerde periode
                 </h4>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
                   <div style={{ padding: '16px', backgroundColor: KLEUREN.wit, borderRadius: '8px', textAlign: 'center' }}>
@@ -3343,7 +3484,7 @@ export default function ValrisicoDashboard() {
               </div>
               
               <h4 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: 600, color: KLEUREN.tekst, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>ðŸŽ¯</span> Doelstellingen 2025
+                <span></span> Doelstellingen 2025
               </h4>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
                 {[
@@ -3352,7 +3493,7 @@ export default function ValrisicoDashboard() {
                     huidig: 72, 
                     doel: 70, 
                     eenheid: '%',
-                    icon: 'ðŸ‘ï¸',
+                    icon: '',
                     richting: 'omhoog',
                     toelichting: 'Het percentage 65-plussers dat jaarlijks de ogen laat controleren. Dit doel is behaald! Blijvende aandacht nodig om dit niveau te behouden.',
                     meetmethode: 'Percentage "ja" op aanvullende vraag 1 van de valrisicotest.'
@@ -3362,9 +3503,9 @@ export default function ValrisicoDashboard() {
                     huidig: 68, 
                     doel: 65, 
                     eenheid: '%',
-                    icon: 'ðŸ¥›',
+                    icon: '',
                     richting: 'omhoog',
-                    toelichting: 'Het percentage 65-plussers dat dagelijks voldoende eiwitten eet voor spierbehoud. Doel behaald dankzij voorlichting via huisartsen en diÃ«tisten.',
+                    toelichting: 'Het percentage 65-plussers dat dagelijks voldoende eiwitten eet voor spierbehoud. Doel behaald dankzij voorlichting via huisartsen en ditisten.',
                     meetmethode: 'Percentage "ja" op aanvullende vraag 5 van de valrisicotest.'
                   },
                   { 
@@ -3372,27 +3513,27 @@ export default function ValrisicoDashboard() {
                     huidig: stats.bereik, 
                     doel: 40, 
                     eenheid: '%',
-                    icon: 'ðŸ“ˆ',
+                    icon: '',
                     richting: 'omhoog',
                     toelichting: `Momenteel heeft ${stats.bereik}% van de ${stats.inw65plus.toLocaleString()} inwoners 65+ de test gedaan. Doel is 40% bereik.`,
-                    meetmethode: 'Berekend als: (aantal afgenomen tests / totaal 65+ inwoners) Ã— 100%.'
+                    meetmethode: 'Berekend als: (aantal afgenomen tests / totaal 65+ inwoners)  100%.'
                   },
                   { 
                     label: 'Doorverwijzing naar fysiotherapie', 
                     huidig: 35, 
                     doel: 60, 
                     eenheid: '%',
-                    icon: 'ðŸ¥',
+                    icon: '',
                     richting: 'omhoog',
                     toelichting: `Van de ${stats.hoog.toLocaleString()} personen met hoog risico is ~35% aangemeld. Doel is 60% (${Math.round(stats.hoog * 0.6).toLocaleString()} personen).`,
-                    meetmethode: 'Berekend als: (fysio-aanmeldingen / totaal hoog risico) Ã— 100%.'
+                    meetmethode: 'Berekend als: (fysio-aanmeldingen / totaal hoog risico)  100%.'
                   },
                   { 
                     label: 'Woningscans uitvoeren', 
                     huidig: 80, 
                     doel: 200, 
                     eenheid: ' per jaar',
-                    icon: 'ðŸ ',
+                    icon: '',
                     richting: 'omhoog',
                     toelichting: 'Jaarlijks 200 woningscans uitvoeren bij 65-plussers met verhoogd valrisico om valgevaar in de thuissituatie te verminderen.',
                     meetmethode: 'Aantal uitgevoerde woningscans geregistreerd door WMO-loket en gecertificeerde aanbieders.'
@@ -3402,7 +3543,7 @@ export default function ValrisicoDashboard() {
                     huidig: 25, 
                     doel: 50, 
                     eenheid: '%',
-                    icon: 'ðŸƒ',
+                    icon: '',
                     richting: 'omhoog',
                     toelichting: `Minimaal 50% van de ${(stats.matig + stats.hoog).toLocaleString()} personen met matig/hoog risico neemt deel aan beweegprogramma.`,
                     meetmethode: 'Deelnemersregistratie van erkende valpreventie-cursussen in de gemeente.'
@@ -3439,7 +3580,7 @@ export default function ValrisicoDashboard() {
                                 {kpi.huidig}{kpi.eenheid}
                               </span>
                             </div>
-                            <span style={{ fontSize: '16px', color: KLEUREN.tekstSub }}>â†’</span>
+                            <span style={{ fontSize: '16px', color: KLEUREN.tekstSub }}></span>
                             <div style={{ 
                               padding: '4px 10px', 
                               backgroundColor: KLEUREN.primairLicht, 
@@ -3501,7 +3642,7 @@ export default function ValrisicoDashboard() {
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: KLEUREN.tekstSub, flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <img src={ZLIMTHUIS_LOGO} alt="Zlimthuis" style={{ height: '24px' }} onError={(e) => { e.target.style.display = 'none'; }} />
-            <span>Valrisico Dashboard â€¢ Gemeente Oude IJsselstreek</span>
+            <span>Valrisico Dashboard  Gemeente Oude IJsselstreek</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <span>Gebaseerd op VeiligheidNL Valrisicotest</span>
