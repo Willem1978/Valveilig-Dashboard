@@ -771,6 +771,12 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
         </Card>
       </div>
 
+      {/* Fysio Kaart */}
+      <Card>
+        <CardTitle sub="Locaties en bereik per praktijk">Praktijken in de gemeente</CardTitle>
+        <FysioKaart fysioStats={fysioStats} filteredRecords={filteredRecords} />
+      </Card>
+
       {/* Inzichten */}
       <Card>
         <CardTitle sub="Automatisch gegenereerd">Inzichten doorverwijzingen</CardTitle>
@@ -781,19 +787,36 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
             <p style={{ margin: 0, fontSize: '13px', color: KLEUREN.tekstSub, lineHeight: 1.7 }}>
               Van de <strong style={{ color: KLEUREN.tekst }}>{fysioStats.hoogRisico}</strong> personen met hoog risico heeft 
               <strong style={{ color: fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }}> {fysioStats.conversie}%</strong> een fysio aangevraagd.
-              {fysioStats.conversie < doelPercentage && fysioStats.hoogRisico > 0 && (
+              {fysioStats.conversie >= doelPercentage ? (
+                <span style={{ color: KLEUREN.laag }}> <strong>Uitstekend!</strong> Het doel van {doelPercentage}% is behaald.</span>
+              ) : fysioStats.hoogRisico > 0 && (
                 <span> Om het doel van {doelPercentage}% te bereiken zijn nog <strong>{nogTeBereiken}</strong> aanvragen nodig.</span>
               )}
             </p>
           </div>
           
-          <div style={{ padding: '18px', backgroundColor: KLEUREN.primairLicht, borderRadius: '12px', borderLeft: `4px solid ${KLEUREN.primair}` }}>
-            <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: KLEUREN.primair }}>💡 Aanbevolen acties</h4>
-            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: KLEUREN.tekst, lineHeight: 1.8 }}>
-              <li>Actieve doorverwijzing vanuit huisarts</li>
-              <li>Persoonlijke brief naar hoog-risico groep</li>
-              <li>Terugbelactie bij niet-aanmelding na 4 weken</li>
-            </ul>
+          <div style={{ 
+            padding: '18px', 
+            backgroundColor: fysioStats.conversie >= doelPercentage ? KLEUREN.laagLicht : KLEUREN.primairLicht, 
+            borderRadius: '12px', 
+            borderLeft: `4px solid ${fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.primair}` 
+          }}>
+            <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.primair }}>
+              {fysioStats.conversie >= doelPercentage ? '✅ Succesfactoren' : '💡 Aanbevolen acties'}
+            </h4>
+            {fysioStats.conversie >= doelPercentage ? (
+              <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: KLEUREN.tekst, lineHeight: 1.8 }}>
+                <li>Huidige aanpak werkt goed - blijf dit voortzetten</li>
+                <li>Deel successen met andere gemeenten</li>
+                <li>Monitor of kwaliteit van doorverwijzingen ook goed is</li>
+              </ul>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: KLEUREN.tekst, lineHeight: 1.8 }}>
+                <li>Actieve doorverwijzing vanuit huisarts</li>
+                <li>Persoonlijke brief naar hoog-risico groep</li>
+                <li>Terugbelactie bij niet-aanmelding na 4 weken</li>
+              </ul>
+            )}
           </div>
         </div>
       </Card>
@@ -803,7 +826,7 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
 
 
 // =============================================================================
-// KAART COMPONENT
+// KAART COMPONENT - Verbeterde versie met gradiënten en effecten
 // =============================================================================
 const GemeenteKaart = ({ stats, wijkFilter, selected, onSelect }) => {
   const [hover, setHover] = useState(null);
@@ -823,45 +846,326 @@ const GemeenteKaart = ({ stats, wijkFilter, selected, onSelect }) => {
 
   return (
     <div>
-      <svg viewBox="0 0 100 110" style={{ width: '100%', maxHeight: '320px', backgroundColor: '#F1F5F9', borderRadius: '8px' }}>
+      <svg viewBox="0 0 100 110" style={{ width: '100%', maxHeight: '360px', borderRadius: '12px', background: 'linear-gradient(135deg, #E8F5F4 0%, #F1F8F7 50%, #E8F5F4 100%)' }}>
+        {/* Achtergrond decoratie */}
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <filter id="shadow">
+            <feDropShadow dx="0" dy="0.5" stdDeviation="0.5" floodOpacity="0.3"/>
+          </filter>
+        </defs>
+        
+        {/* Wijk gebieden (subtiele achtergrond) */}
+        {WIJKEN.map(w => {
+          const wijkKernen = visible.filter(k => {
+            const kern = KERNEN.find(x => x.id === k.kern);
+            return kern && kern.wijk === w.code;
+          });
+          if (wijkKernen.length === 0) return null;
+          
+          return wijkKernen.map(k => {
+            const kern = KERNEN.find(x => x.id === k.kern);
+            if (!kern) return null;
+            return (
+              <circle 
+                key={`bg-${k.kern}`}
+                cx={kern.x} 
+                cy={kern.y} 
+                r={12} 
+                fill={w.kleur} 
+                opacity={0.08}
+              />
+            );
+          });
+        })}
+        
+        {/* Kernen */}
         {visible.map(k => {
           const kern = KERNEN.find(x => x.id === k.kern);
           if (!kern) return null;
           const isSelected = selected === k.kern;
           const isHover = hover === k.kern;
-          const r = k.tests === 0 ? 2 : Math.max(3, Math.min(7, k.tests / 40));
+          const baseR = k.tests === 0 ? 2.5 : Math.max(4, Math.min(8, 3 + k.tests / 30));
+          const r = isSelected || isHover ? baseR * 1.15 : baseR;
           const wijk = WIJKEN.find(w => w.code === kern.wijk);
           
           return (
-            <g key={k.kern}>
-              <circle cx={kern.x} cy={kern.y} r={r + 1.5} fill="none" stroke={wijk?.kleur || '#666'} strokeWidth={isSelected ? 2 : 1} opacity={isSelected || isHover ? 1 : 0.5} />
-              <circle cx={kern.x} cy={kern.y} r={r} fill={getColor(k)} stroke="#fff" strokeWidth="1" style={{ cursor: 'pointer' }} opacity={isSelected || isHover ? 1 : 0.8}
-                onMouseEnter={() => setHover(k.kern)} onMouseLeave={() => setHover(null)} onClick={() => onSelect(isSelected ? null : k.kern)} />
-              <text x={kern.x} y={kern.y + r + 5} textAnchor="middle" style={{ fontSize: '3px', fontWeight: isSelected ? 600 : 400, fill: KLEUREN.tekst, pointerEvents: 'none' }}>
+            <g key={k.kern} style={{ cursor: 'pointer' }}
+               onMouseEnter={() => setHover(k.kern)} 
+               onMouseLeave={() => setHover(null)} 
+               onClick={() => onSelect(isSelected ? null : k.kern)}>
+              
+              {/* Wijk ring */}
+              <circle 
+                cx={kern.x} cy={kern.y} 
+                r={r + 2} 
+                fill="none" 
+                stroke={wijk?.kleur || '#666'} 
+                strokeWidth={isSelected ? 2.5 : 1.5} 
+                opacity={isSelected ? 1 : isHover ? 0.8 : 0.4}
+                strokeDasharray={isSelected ? "none" : "none"}
+              />
+              
+              {/* Kern cirkel */}
+              <circle 
+                cx={kern.x} cy={kern.y} 
+                r={r} 
+                fill={getColor(k)} 
+                stroke="#fff" 
+                strokeWidth={1.5}
+                filter={isSelected || isHover ? "url(#shadow)" : "none"}
+                opacity={k.tests === 0 ? 0.5 : 1}
+              />
+              
+              {/* Percentage in cirkel voor geselecteerde/hover */}
+              {(isSelected || isHover) && k.tests > 0 && (
+                <text 
+                  x={kern.x} y={kern.y + 1} 
+                  textAnchor="middle" 
+                  style={{ fontSize: '3.5px', fontWeight: 700, fill: '#fff', pointerEvents: 'none' }}>
+                  {Math.round(k.hoog / k.tests * 100)}%
+                </text>
+              )}
+              
+              {/* Kern naam */}
+              <text 
+                x={kern.x} y={kern.y + r + 6} 
+                textAnchor="middle" 
+                style={{ 
+                  fontSize: isSelected || isHover ? '3.8px' : '3.2px', 
+                  fontWeight: isSelected ? 700 : isHover ? 600 : 400, 
+                  fill: isSelected ? KLEUREN.primair : KLEUREN.tekst, 
+                  pointerEvents: 'none' 
+                }}>
                 {kern.naam}
+              </text>
+              
+              {/* Aantal tests indicator */}
+              {k.tests > 0 && !isSelected && !isHover && (
+                <text 
+                  x={kern.x} y={kern.y + 0.8} 
+                  textAnchor="middle" 
+                  style={{ fontSize: '2.8px', fontWeight: 600, fill: '#fff', pointerEvents: 'none' }}>
+                  {k.tests}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        
+        {/* Titel in kaart */}
+        <text x="50" y="6" textAnchor="middle" style={{ fontSize: '4px', fontWeight: 600, fill: KLEUREN.tekstSub }}>
+          Gemeente Oude IJsselstreek
+        </text>
+      </svg>
+      
+      {/* Legenda */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginTop: '16px', 
+        padding: '12px 16px',
+        backgroundColor: KLEUREN.achtergrond,
+        borderRadius: '10px',
+        flexWrap: 'wrap', 
+        gap: '12px' 
+      }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+          {WIJKEN.map(w => (
+            <div key={w.code} style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              opacity: wijkFilter === 'alle' || wijkFilter === w.code ? 1 : 0.3,
+              padding: '4px 8px',
+              borderRadius: '6px',
+              backgroundColor: wijkFilter === w.code ? `${w.kleur}15` : 'transparent'
+            }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '4px', backgroundColor: w.kleur }} />
+              <span style={{ fontSize: '12px', fontWeight: 500, color: KLEUREN.tekst }}>{w.naam}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <span style={{ fontSize: '11px', color: KLEUREN.tekstSub, fontWeight: 500 }}>% Hoog risico:</span>
+          {[
+            { c: KLEUREN.laag, l: '<30%' }, 
+            { c: KLEUREN.matig, l: '30-40%' }, 
+            { c: KLEUREN.hoog, l: '>40%' }
+          ].map((x, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: x.c, border: '2px solid #fff', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }} />
+              <span style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>{x.l}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// =============================================================================
+// FYSIO KAART COMPONENT - Toont locaties van fysiotherapeuten
+// =============================================================================
+const FysioKaart = ({ fysioStats, filteredRecords }) => {
+  const [hover, setHover] = useState(null);
+  
+  // Fysio locaties op de kaart
+  const fysioLocaties = [
+    { ...FYSIO_DATA[0], x: 45, y: 55 }, // FysioVitaal Ulft
+    { ...FYSIO_DATA[1], x: 55, y: 35 }, // Fysiotherapie Terborg
+    { ...FYSIO_DATA[2], x: 35, y: 45 }, // Praktijk Bewegen & Balans (Silvolde)
+  ];
+
+  return (
+    <div>
+      <svg viewBox="0 0 100 100" style={{ width: '100%', maxHeight: '280px', borderRadius: '12px', background: 'linear-gradient(135deg, #EEF2FF 0%, #F5F7FF 50%, #EEF2FF 100%)' }}>
+        <defs>
+          <filter id="fysioGlow">
+            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        
+        {/* Gemeente contour (gestileerd) */}
+        <ellipse cx="50" cy="50" rx="40" ry="35" fill="none" stroke={KLEUREN.rand} strokeWidth="0.5" strokeDasharray="2,2" opacity="0.5" />
+        
+        {/* Verbindingslijnen tussen praktijken */}
+        {fysioLocaties.map((f1, i) => 
+          fysioLocaties.slice(i + 1).map((f2, j) => (
+            <line 
+              key={`${i}-${j}`}
+              x1={f1.x} y1={f1.y} 
+              x2={f2.x} y2={f2.y}
+              stroke={KLEUREN.rand}
+              strokeWidth="0.3"
+              strokeDasharray="1,1"
+              opacity="0.3"
+            />
+          ))
+        )}
+        
+        {/* Fysio praktijken */}
+        {fysioLocaties.map((fysio, idx) => {
+          const aantal = fysioStats.perPraktijk.find(p => p.id === fysio.id)?.aantal || 0;
+          const isHover = hover === fysio.id;
+          const r = Math.max(6, Math.min(12, 6 + aantal / 2));
+          
+          return (
+            <g key={fysio.id} 
+               style={{ cursor: 'pointer' }}
+               onMouseEnter={() => setHover(fysio.id)}
+               onMouseLeave={() => setHover(null)}>
+              
+              {/* Bereik cirkel */}
+              <circle 
+                cx={fysio.x} cy={fysio.y} 
+                r={r + 8} 
+                fill={fysio.kleur} 
+                opacity={isHover ? 0.15 : 0.08}
+              />
+              
+              {/* Praktijk marker */}
+              <circle 
+                cx={fysio.x} cy={fysio.y} 
+                r={r}
+                fill={fysio.kleur}
+                stroke="#fff"
+                strokeWidth="2"
+                filter={isHover ? "url(#fysioGlow)" : "none"}
+              />
+              
+              {/* Icoon */}
+              <text 
+                x={fysio.x} y={fysio.y + 2} 
+                textAnchor="middle" 
+                style={{ fontSize: '6px', fill: '#fff', pointerEvents: 'none' }}>
+                🏥
+              </text>
+              
+              {/* Aantal */}
+              {aantal > 0 && (
+                <g>
+                  <circle cx={fysio.x + r - 2} cy={fysio.y - r + 2} r="4" fill={KLEUREN.primair} stroke="#fff" strokeWidth="1" />
+                  <text 
+                    x={fysio.x + r - 2} y={fysio.y - r + 3.5} 
+                    textAnchor="middle" 
+                    style={{ fontSize: '3px', fontWeight: 700, fill: '#fff', pointerEvents: 'none' }}>
+                    {aantal}
+                  </text>
+                </g>
+              )}
+              
+              {/* Naam label */}
+              <text 
+                x={fysio.x} y={fysio.y + r + 7}
+                textAnchor="middle"
+                style={{ 
+                  fontSize: isHover ? '4px' : '3.5px', 
+                  fontWeight: isHover ? 700 : 500, 
+                  fill: KLEUREN.tekst,
+                  pointerEvents: 'none'
+                }}>
+                {fysio.naam.length > 18 ? fysio.naam.substring(0, 16) + '...' : fysio.naam}
+              </text>
+              <text 
+                x={fysio.x} y={fysio.y + r + 11}
+                textAnchor="middle"
+                style={{ fontSize: '3px', fill: KLEUREN.tekstSub, pointerEvents: 'none' }}>
+                {fysio.locatie}
               </text>
             </g>
           );
         })}
+        
+        {/* Titel */}
+        <text x="50" y="8" textAnchor="middle" style={{ fontSize: '4px', fontWeight: 600, fill: KLEUREN.tekstSub }}>
+          Fysiotherapie praktijken
+        </text>
       </svg>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', flexWrap: 'wrap', gap: '8px' }}>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          {WIJKEN.map(w => (
-            <div key={w.code} style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: wijkFilter === 'alle' || wijkFilter === w.code ? 1 : 0.3 }}>
-              <div style={{ width: '10px', height: '10px', borderRadius: '3px', backgroundColor: w.kleur }} />
-              <span style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>{w.naam}</span>
+      {/* Legenda */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center',
+        gap: '20px',
+        marginTop: '12px', 
+        padding: '10px 16px',
+        backgroundColor: KLEUREN.achtergrond,
+        borderRadius: '8px',
+        flexWrap: 'wrap'
+      }}>
+        {FYSIO_DATA.map(f => {
+          const aantal = fysioStats.perPraktijk.find(p => p.id === f.id)?.aantal || 0;
+          return (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ 
+                width: '14px', height: '14px', borderRadius: '50%', 
+                backgroundColor: f.kleur, 
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '8px'
+              }}>🏥</div>
+              <span style={{ fontSize: '12px', color: KLEUREN.tekst }}>{f.naam}</span>
+              <span style={{ 
+                fontSize: '11px', fontWeight: 600, 
+                color: f.kleur,
+                backgroundColor: `${f.kleur}15`,
+                padding: '2px 6px',
+                borderRadius: '4px'
+              }}>{aantal}</span>
             </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          {[{ c: KLEUREN.laag, l: '<30%' }, { c: KLEUREN.matig, l: '30-40%' }, { c: KLEUREN.hoog, l: '>40%' }].map((x, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: x.c }} />
-              <span style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>{x.l}</span>
-            </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1142,27 +1446,38 @@ export default function ValrisicoDashboard() {
     const hoogRisicoAantal = stats.hoog;
     const matigRisicoAantal = stats.matig;
     
-    // Bereken percentages dynamisch
-    const beweegPerc = preventieData.find(p => p.id === 1)?.perc || 32;
-    const woningPerc = preventieData.find(p => p.id === 2)?.perc || 44;
-    const medicijnPerc = preventieData.find(p => p.id === 3)?.perc || 58;
+    // Bereken percentages dynamisch - p3 is beweging in de huidige structuur
+    const beweegPerc = preventieData.find(p => p.id === 3)?.perc || 0;
+    const woningPerc = preventieData.find(p => p.id === 6)?.perc || 0; // p6 is woonomgeving
+    const medicijnPerc = preventieData.find(p => p.id === 4)?.perc || 0;
     
-    // Dynamische adviezen op basis van data
+    // Doelstellingen
+    const beweegDoel = 50;
+    const woningDoel = 70;
+    const fysioDoel = 40;
+    
+    // Dynamische adviezen op basis van data - POSITIEF of NEGATIEF afhankelijk van doel
     let beweegAdvies = '';
-    if (dominanteLeeftijd === '85+') {
-      beweegAdvies = `Slechts ${beweegPerc}% doet regelmatig oefeningen. Focus op thuisoefeningen met begeleiding voor de kwetsbare 85+ groep.`;
+    let beweegPositief = beweegPerc >= beweegDoel;
+    if (beweegPositief) {
+      beweegAdvies = `Uitstekend! ${beweegPerc}% beweegt regelmatig, boven het doel van ${beweegDoel}%. Houd dit vast door bestaande programma's te continueren.`;
+    } else if (dominanteLeeftijd === '85+') {
+      beweegAdvies = `Slechts ${beweegPerc}% doet regelmatig oefeningen (doel: ${beweegDoel}%). Focus op thuisoefeningen met begeleiding voor de kwetsbare 85+ groep.`;
     } else if (dominanteLeeftijd === '75-84') {
-      beweegAdvies = `${beweegPerc}% oefent regelmatig. Groepscursussen "In Balans" zijn effectief voor deze leeftijdsgroep.`;
+      beweegAdvies = `${beweegPerc}% oefent regelmatig (doel: ${beweegDoel}%). Groepscursussen "In Balans" zijn effectief voor deze leeftijdsgroep.`;
     } else {
-      beweegAdvies = `${beweegPerc}% is actief. Stimuleer sport en beweegactiviteiten om risico's te voorkomen.`;
+      beweegAdvies = `${beweegPerc}% is actief (doel: ${beweegDoel}%). Stimuleer sport en beweegactiviteiten om risico's te voorkomen.`;
     }
     
     let woningAdvies = '';
+    let woningPositief = woningPerc >= woningDoel;
     const woningGap = 100 - woningPerc;
-    if (woningGap > 60) {
-      woningAdvies = `${woningGap}% heeft geen aanpassingen - grootschalige actie nodig via huisbezoeken en WMO-subsidies.`;
+    if (woningPositief) {
+      woningAdvies = `Goed bezig! ${woningPerc}% heeft een veilige woonomgeving, boven het doel van ${woningDoel}%. Focus op de resterende ${woningGap}% voor verdere verbetering.`;
+    } else if (woningGap > 60) {
+      woningAdvies = `${woningGap}% heeft geen aanpassingen (doel: max ${100-woningDoel}%) - grootschalige actie nodig via huisbezoeken en WMO-subsidies.`;
     } else if (woningGap > 45) {
-      woningAdvies = `${woningGap}% mist woningaanpassingen. Gratis woningscans actief promoten bij deze doelgroep.`;
+      woningAdvies = `${woningGap}% mist woningaanpassingen (doel: max ${100-woningDoel}%). Gratis woningscans actief promoten bij deze doelgroep.`;
     } else {
       woningAdvies = `${woningGap}% kan nog profiteren van aanpassingen. Focus op resterende hoog-risico gevallen.`;
     }
@@ -1173,15 +1488,20 @@ export default function ValrisicoDashboard() {
     } else if (enkelGeslacht === 'Vrouw' || dominantGeslacht === 'Vrouw') {
       fysioAdvies = `Vrouwen (${Math.round(vrouwData.tests / totaal * 100)}% van selectie) hebben vaker valangst. Combineer training met angstreductie.`;
     } else {
-      fysioAdvies = `Van de ${hoogRisicoAantal.toLocaleString()} personen met hoog risico dient minimaal 60% doorverwezen te worden naar fysiotherapie.`;
+      fysioAdvies = `Van de ${hoogRisicoAantal.toLocaleString()} personen met hoog risico dient minimaal ${fysioDoel}% doorverwezen te worden naar fysiotherapie.`;
     }
     
     return {
       beweegprobleem: beweegPerc,
       beweegAdvies,
+      beweegPositief,
+      beweegDoel,
       woningprobleem: woningGap,
       woningAdvies,
+      woningPositief,
+      woningDoel,
       fysioAdvies,
+      fysioDoel,
       medicijnPerc,
       doelgroepAantal: hoogRisicoAantal,
       matigAantal: matigRisicoAantal,
@@ -2813,12 +3133,22 @@ export default function ValrisicoDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
               {[
                 { 
-                  titel: 'Beweegprogramma\'s opschalen', 
-                  icon: '🏃', 
+                  titel: aanbevelingenTeksten.beweegPositief ? 'Beweegprogramma\'s ✓' : 'Beweegprogramma\'s opschalen', 
+                  icon: aanbevelingenTeksten.beweegPositief ? '✅' : '🏃', 
                   prio: 1,
-                  probleem: `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet minimaal 2x per week evenwichtsoefeningen.`,
+                  positief: aanbevelingenTeksten.beweegPositief,
+                  probleem: aanbevelingenTeksten.beweegPositief 
+                    ? `${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers beweegt regelmatig - boven het doel van ${aanbevelingenTeksten.beweegDoel}%!`
+                    : `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet regelmatig balansoefeningen (doel: ${aanbevelingenTeksten.beweegDoel}%).`,
                   onderbouwing: aanbevelingenTeksten.beweegAdvies,
-                  acties: aanbevelingenTeksten.prioriteitGroep === '85+'
+                  acties: aanbevelingenTeksten.beweegPositief
+                    ? [
+                        'Continueer huidige beweegprogramma\'s',
+                        'Deel succesverhalen met andere gemeenten',
+                        'Monitor langetermijn resultaten',
+                        'Versterk samenwerking met sportverenigingen'
+                      ]
+                    : aanbevelingenTeksten.prioriteitGroep === '85+'
                     ? [
                         'Thuisoefenprogramma met begeleiding aan huis',
                         'Persoonlijke valpreventiecoach voor 85-plussers',
@@ -2831,16 +3161,28 @@ export default function ValrisicoDashboard() {
                         'Beweegtuinen in kernen met hoog risico',
                         'Samenwerking met lokale sportverenigingen'
                       ],
-                  kpi: `Doel: 50% van de ${stats.hoog.toLocaleString()} hoog-risico personen neemt deel aan beweegprogramma`,
+                  kpi: aanbevelingenTeksten.beweegPositief 
+                    ? `Behaald: ${aanbevelingenTeksten.beweegprobleem}% beweegt regelmatig (doel was ${aanbevelingenTeksten.beweegDoel}%)`
+                    : `Doel: ${aanbevelingenTeksten.beweegDoel}% van de geteste personen beweegt regelmatig`,
                   verantwoordelijk: 'GGD / Welzijnsorganisatie / Fysiotherapeuten'
                 },
                 { 
-                  titel: 'Woningaanpassingen stimuleren', 
-                  icon: '🏠', 
+                  titel: aanbevelingenTeksten.woningPositief ? 'Woningveiligheid ✓' : 'Woningaanpassingen stimuleren', 
+                  icon: aanbevelingenTeksten.woningPositief ? '✅' : '🏠', 
                   prio: 2,
-                  probleem: `${aanbevelingenTeksten.woningprobleem}% heeft nog geen woningaanpassingen doorgevoerd om valrisico te verminderen.`,
+                  positief: aanbevelingenTeksten.woningPositief,
+                  probleem: aanbevelingenTeksten.woningPositief
+                    ? `${100 - aanbevelingenTeksten.woningprobleem}% heeft een veilige woonomgeving - boven het doel van ${aanbevelingenTeksten.woningDoel}%!`
+                    : `${aanbevelingenTeksten.woningprobleem}% heeft nog geen veilige woonomgeving (doel: max ${100 - aanbevelingenTeksten.woningDoel}%).`,
                   onderbouwing: aanbevelingenTeksten.woningAdvies,
-                  acties: aanbevelingenTeksten.prioriteitGroep === '85+'
+                  acties: aanbevelingenTeksten.woningPositief
+                    ? [
+                        'Blijf woningscans actief aanbieden',
+                        'Focus op de resterende risicogroep',
+                        'Evalueer effectiviteit van aanpassingen',
+                        'Deel best practices met andere gemeenten'
+                      ]
+                    : aanbevelingenTeksten.prioriteitGroep === '85+'
                     ? [
                         'Proactieve huisbezoeken door wijkverpleging',
                         'Woningscan aan huis met directe begeleiding',
@@ -2853,11 +3195,16 @@ export default function ValrisicoDashboard() {
                         'Informatiebijeenkomsten over woningaanpassingen per kern',
                         'Subsidieregeling voor kleine aanpassingen via WMO'
                       ],
-                  kpi: 'Doel: 200 woningscans per jaar, 80% voert minimaal 1 aanpassing door',
+                  kpi: aanbevelingenTeksten.woningPositief
+                    ? `Behaald: ${100 - aanbevelingenTeksten.woningprobleem}% veilige woonomgeving (doel was ${aanbevelingenTeksten.woningDoel}%)`
+                    : `Doel: ${aanbevelingenTeksten.woningDoel}% heeft veilige woonomgeving`,
                   verantwoordelijk: 'Gemeente WMO / Woningcorporaties / Thuiszorg'
                 },
                 { 
                   titel: 'Doorverwijzing naar fysiotherapie', 
+                  icon: '🩺', 
+                  prio: 3,
+                  positief: false, 
                   icon: '🩺', 
                   prio: 3,
                   probleem: `Van de ${stats.hoog.toLocaleString()} personen met hoog valrisico in deze selectie is het aanmeldingspercentage bij fysiotherapie nog onvoldoende.`,
@@ -2886,11 +3233,11 @@ export default function ValrisicoDashboard() {
                   verantwoordelijk: 'Huisartsen / Fysiotherapeuten / POH'
                 },
               ].map((item, i) => (
-                <Card key={i} highlight={i === 0}>
+                <Card key={i} highlight={!item.positief && i === 0}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '16px' }}>
                     <div style={{ 
                       width: '48px', height: '48px', borderRadius: '12px',
-                      backgroundColor: i === 0 ? KLEUREN.hoogLicht : i === 1 ? KLEUREN.matigLicht : KLEUREN.primairLicht,
+                      backgroundColor: item.positief ? KLEUREN.laagLicht : (i === 0 ? KLEUREN.hoogLicht : i === 1 ? KLEUREN.matigLicht : KLEUREN.primairLicht),
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '24px', flexShrink: 0
                     }}>
@@ -2901,10 +3248,10 @@ export default function ValrisicoDashboard() {
                         <span style={{ 
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           width: '22px', height: '22px', borderRadius: '50%', 
-                          backgroundColor: KLEUREN.primair, color: KLEUREN.wit,
+                          backgroundColor: item.positief ? KLEUREN.laag : KLEUREN.primair, color: KLEUREN.wit,
                           fontSize: '12px', fontWeight: 700
-                        }}>{item.prio}</span>
-                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: KLEUREN.tekst }}>{item.titel}</h3>
+                        }}>{item.positief ? '✓' : item.prio}</span>
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: item.positief ? KLEUREN.laag : KLEUREN.tekst }}>{item.titel}</h3>
                       </div>
                       <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.tekstSub }}>
                         {item.verantwoordelijk}
@@ -2912,20 +3259,27 @@ export default function ValrisicoDashboard() {
                     </div>
                   </div>
                   
-                  <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: KLEUREN.hoogLicht, borderRadius: '8px', borderLeft: `3px solid ${KLEUREN.hoog}` }}>
+                  <div style={{ 
+                    marginBottom: '16px', padding: '12px', 
+                    backgroundColor: item.positief ? KLEUREN.laagLicht : KLEUREN.hoogLicht, 
+                    borderRadius: '8px', 
+                    borderLeft: `3px solid ${item.positief ? KLEUREN.laag : KLEUREN.hoog}` 
+                  }}>
                     <p style={{ margin: 0, fontSize: '13px', color: KLEUREN.tekst }}>
-                      <strong>Probleem:</strong> {item.probleem}
+                      <strong>{item.positief ? 'Resultaat:' : 'Probleem:'}</strong> {item.probleem}
                     </p>
                   </div>
                   
                   <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: KLEUREN.primairLicht, borderRadius: '8px', borderLeft: `3px solid ${KLEUREN.primair}` }}>
                     <p style={{ margin: 0, fontSize: '13px', color: KLEUREN.tekst }}>
-                      <strong>Onderbouwing:</strong> {item.onderbouwing}
+                      <strong>{item.positief ? 'Waarom dit werkt:' : 'Onderbouwing:'}</strong> {item.onderbouwing}
                     </p>
                   </div>
                   
                   <div style={{ marginBottom: '16px' }}>
-                    <p style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 600, color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>Concrete acties</p>
+                    <p style={{ margin: '0 0 8px 0', fontSize: '12px', fontWeight: 600, color: KLEUREN.tekstSub, textTransform: 'uppercase' }}>
+                      {item.positief ? 'Vervolgacties' : 'Concrete acties'}
+                    </p>
                     <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', color: KLEUREN.tekst, lineHeight: 1.7 }}>
                       {item.acties.map((a, j) => <li key={j}>{a}</li>)}
                     </ul>
