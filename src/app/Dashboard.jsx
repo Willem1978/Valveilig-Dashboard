@@ -612,29 +612,6 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
     ...f,
     percentage: fysioStats.totaalAanvragen > 0 ? Math.round((f.aantal / fysioStats.totaalAanvragen) * 100) : 0,
   }));
-  
-  // Trend per maand
-  const trendData = useMemo(() => {
-    return MAANDEN.map(m => {
-      const maandRecords = filteredRecords.filter(r => {
-        const datum = new Date(r.created_at);
-        return datum.getMonth() + 1 === m.id && r.fysio_contact_aangevraagd === true;
-      });
-      
-      const perPraktijk = {};
-      FYSIO_DATA.forEach(p => {
-        perPraktijk[p.naam] = maandRecords.filter(r => 
-          r.fysio_praktijk === p.id || r.fysio_praktijk === p.naam
-        ).length;
-      });
-      
-      return {
-        maand: m.kort,
-        ...perPraktijk,
-        totaal: maandRecords.length,
-      };
-    });
-  }, [filteredRecords]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -673,108 +650,75 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
         />
       </div>
 
-      {/* Praktijken en Grafiek */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
-        
-        {/* Praktijken kaarten */}
-        <Card>
-          <CardTitle sub="Aanvragen per praktijk">Fysiotherapie praktijken</CardTitle>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {marktaandeel.map((fysio, idx) => {
-              const isSelected = selectedFysio === fysio.id;
-              return (
-                <div 
-                  key={fysio.id}
-                  onClick={() => setSelectedFysio(isSelected ? null : fysio.id)}
-                  style={{ 
-                    padding: '16px', borderRadius: '12px', cursor: 'pointer',
-                    backgroundColor: isSelected ? `${fysio.kleur}15` : KLEUREN.achtergrond,
-                    border: `2px solid ${isSelected ? fysio.kleur : 'transparent'}`,
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                      <div style={{ 
-                        width: '50px', height: '50px', borderRadius: '12px',
-                        backgroundColor: fysio.kleur, color: '#fff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '20px', fontWeight: 700,
-                      }}>
-                        🏥
-                      </div>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: KLEUREN.tekst }}>{fysio.naam}</h4>
-                        <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>📍 {fysio.locatie}</p>
-                      </div>
+      {/* Praktijken kaarten */}
+      <Card>
+        <CardTitle sub="Aanvragen per praktijk">Fysiotherapie praktijken</CardTitle>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {marktaandeel.map((fysio, idx) => {
+            const isSelected = selectedFysio === fysio.id;
+            return (
+              <div 
+                key={fysio.id}
+                onClick={() => setSelectedFysio(isSelected ? null : fysio.id)}
+                style={{ 
+                  padding: '16px', borderRadius: '12px', cursor: 'pointer',
+                  backgroundColor: isSelected ? `${fysio.kleur}15` : KLEUREN.achtergrond,
+                  border: `2px solid ${isSelected ? fysio.kleur : 'transparent'}`,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ 
+                      width: '50px', height: '50px', borderRadius: '12px',
+                      backgroundColor: fysio.kleur, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '20px', fontWeight: 700,
+                    }}>
+                      🏥
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '28px', fontWeight: 700, color: fysio.kleur }}>{fysio.aantal}</div>
-                      <div style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>{fysio.percentage}% aandeel</div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: KLEUREN.tekst }}>{fysio.naam}</h4>
+                      <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>📍 {fysio.locatie}</p>
                     </div>
                   </div>
-                  
-                  <div style={{ marginTop: '12px' }}>
-                    <div style={{ height: '8px', backgroundColor: KLEUREN.rand, borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: `${fysio.percentage}%`, height: '100%', backgroundColor: fysio.kleur }} />
-                    </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '28px', fontWeight: 700, color: fysio.kleur }}>{fysio.aantal}</div>
+                    <div style={{ fontSize: '11px', color: KLEUREN.tekstSub }}>{fysio.percentage}% aandeel</div>
                   </div>
                 </div>
-              );
-            })}
+                
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ height: '8px', backgroundColor: KLEUREN.rand, borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ width: `${fysio.percentage}%`, height: '100%', backgroundColor: fysio.kleur }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        <div style={{ 
+          marginTop: '16px', padding: '14px 18px', 
+          backgroundColor: KLEUREN.primairLicht, borderRadius: '10px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }}>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: KLEUREN.primair }}>Totaal aanvragen</span>
+          <span style={{ fontSize: '24px', fontWeight: 700, color: KLEUREN.primair }}>{fysioStats.totaalAanvragen}</span>
+        </div>
+        
+        {/* Conversie indicator */}
+        <div style={{ marginTop: '16px', padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600 }}>Conversie hoog risico → fysio</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }}>
+              {fysioStats.conversie}% / {doelPercentage}% doel
+            </span>
           </div>
-          
-          <div style={{ 
-            marginTop: '16px', padding: '14px 18px', 
-            backgroundColor: KLEUREN.primairLicht, borderRadius: '10px',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-          }}>
-            <span style={{ fontSize: '14px', fontWeight: 600, color: KLEUREN.primair }}>Totaal aanvragen</span>
-            <span style={{ fontSize: '24px', fontWeight: 700, color: KLEUREN.primair }}>{fysioStats.totaalAanvragen}</span>
+          <div style={{ height: '10px', backgroundColor: KLEUREN.rand, borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
+            <div style={{ width: `${Math.min(fysioStats.conversie, 100)}%`, height: '100%', backgroundColor: fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }} />
+            <div style={{ position: 'absolute', left: `${doelPercentage}%`, top: '-1px', bottom: '-1px', width: '2px', backgroundColor: KLEUREN.tekst }} />
           </div>
-        </Card>
-
-        {/* Trend grafiek */}
-        <Card>
-          <CardTitle sub="Aanvragen per maand">Trend over tijd</CardTitle>
-          {fysioStats.totaalAanvragen > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={KLEUREN.rand} />
-                <XAxis dataKey="maand" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Legend />
-                {FYSIO_DATA.map(f => (
-                  <Bar key={f.id} dataKey={f.naam} stackId="a" fill={f.kleur} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{ padding: '60px 20px', textAlign: 'center', color: KLEUREN.tekstSub }}>
-              Nog geen fysio aanvragen in deze selectie
-            </div>
-          )}
-          
-          {/* Conversie indicator */}
-          <div style={{ marginTop: '20px', padding: '16px', backgroundColor: KLEUREN.achtergrond, borderRadius: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 600 }}>Conversie hoog risico → fysio</span>
-              <span style={{ fontSize: '14px', fontWeight: 700, color: fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }}>
-                {fysioStats.conversie}% / {doelPercentage}% doel
-              </span>
-            </div>
-            <div style={{ height: '10px', backgroundColor: KLEUREN.rand, borderRadius: '5px', overflow: 'hidden', position: 'relative' }}>
-              <div style={{ width: `${Math.min(fysioStats.conversie, 100)}%`, height: '100%', backgroundColor: fysioStats.conversie >= doelPercentage ? KLEUREN.laag : KLEUREN.matig }} />
-              <div style={{ position: 'absolute', left: `${doelPercentage}%`, top: '-1px', bottom: '-1px', width: '2px', backgroundColor: KLEUREN.tekst }} />
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Fysio Kaart */}
-      <Card>
-        <CardTitle sub="Locaties en bereik per praktijk">Praktijken in de gemeente</CardTitle>
-        <FysioKaart fysioStats={fysioStats} filteredRecords={filteredRecords} />
+        </div>
       </Card>
 
       {/* Inzichten */}
@@ -1006,166 +950,6 @@ const GemeenteKaart = ({ stats, wijkFilter, selected, onSelect }) => {
             </div>
           ))}
         </div>
-      </div>
-    </div>
-  );
-};
-
-// =============================================================================
-// FYSIO KAART COMPONENT - Toont locaties van fysiotherapeuten
-// =============================================================================
-const FysioKaart = ({ fysioStats, filteredRecords }) => {
-  const [hover, setHover] = useState(null);
-  
-  // Fysio locaties op de kaart
-  const fysioLocaties = [
-    { ...FYSIO_DATA[0], x: 45, y: 55 }, // FysioVitaal Ulft
-    { ...FYSIO_DATA[1], x: 55, y: 35 }, // Fysiotherapie Terborg
-    { ...FYSIO_DATA[2], x: 35, y: 45 }, // Praktijk Bewegen & Balans (Silvolde)
-  ];
-
-  return (
-    <div>
-      <svg viewBox="0 0 100 100" style={{ width: '100%', maxHeight: '280px', borderRadius: '12px', background: 'linear-gradient(135deg, #EEF2FF 0%, #F5F7FF 50%, #EEF2FF 100%)' }}>
-        <defs>
-          <filter id="fysioGlow">
-            <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        
-        {/* Gemeente contour (gestileerd) */}
-        <ellipse cx="50" cy="50" rx="40" ry="35" fill="none" stroke={KLEUREN.rand} strokeWidth="0.5" strokeDasharray="2,2" opacity="0.5" />
-        
-        {/* Verbindingslijnen tussen praktijken */}
-        {fysioLocaties.map((f1, i) => 
-          fysioLocaties.slice(i + 1).map((f2, j) => (
-            <line 
-              key={`${i}-${j}`}
-              x1={f1.x} y1={f1.y} 
-              x2={f2.x} y2={f2.y}
-              stroke={KLEUREN.rand}
-              strokeWidth="0.3"
-              strokeDasharray="1,1"
-              opacity="0.3"
-            />
-          ))
-        )}
-        
-        {/* Fysio praktijken */}
-        {fysioLocaties.map((fysio, idx) => {
-          const aantal = fysioStats.perPraktijk.find(p => p.id === fysio.id)?.aantal || 0;
-          const isHover = hover === fysio.id;
-          const r = Math.max(6, Math.min(12, 6 + aantal / 2));
-          
-          return (
-            <g key={fysio.id} 
-               style={{ cursor: 'pointer' }}
-               onMouseEnter={() => setHover(fysio.id)}
-               onMouseLeave={() => setHover(null)}>
-              
-              {/* Bereik cirkel */}
-              <circle 
-                cx={fysio.x} cy={fysio.y} 
-                r={r + 8} 
-                fill={fysio.kleur} 
-                opacity={isHover ? 0.15 : 0.08}
-              />
-              
-              {/* Praktijk marker */}
-              <circle 
-                cx={fysio.x} cy={fysio.y} 
-                r={r}
-                fill={fysio.kleur}
-                stroke="#fff"
-                strokeWidth="2"
-                filter={isHover ? "url(#fysioGlow)" : "none"}
-              />
-              
-              {/* Icoon */}
-              <text 
-                x={fysio.x} y={fysio.y + 2} 
-                textAnchor="middle" 
-                style={{ fontSize: '6px', fill: '#fff', pointerEvents: 'none' }}>
-                🏥
-              </text>
-              
-              {/* Aantal */}
-              {aantal > 0 && (
-                <g>
-                  <circle cx={fysio.x + r - 2} cy={fysio.y - r + 2} r="4" fill={KLEUREN.primair} stroke="#fff" strokeWidth="1" />
-                  <text 
-                    x={fysio.x + r - 2} y={fysio.y - r + 3.5} 
-                    textAnchor="middle" 
-                    style={{ fontSize: '3px', fontWeight: 700, fill: '#fff', pointerEvents: 'none' }}>
-                    {aantal}
-                  </text>
-                </g>
-              )}
-              
-              {/* Naam label */}
-              <text 
-                x={fysio.x} y={fysio.y + r + 7}
-                textAnchor="middle"
-                style={{ 
-                  fontSize: isHover ? '4px' : '3.5px', 
-                  fontWeight: isHover ? 700 : 500, 
-                  fill: KLEUREN.tekst,
-                  pointerEvents: 'none'
-                }}>
-                {fysio.naam.length > 18 ? fysio.naam.substring(0, 16) + '...' : fysio.naam}
-              </text>
-              <text 
-                x={fysio.x} y={fysio.y + r + 11}
-                textAnchor="middle"
-                style={{ fontSize: '3px', fill: KLEUREN.tekstSub, pointerEvents: 'none' }}>
-                {fysio.locatie}
-              </text>
-            </g>
-          );
-        })}
-        
-        {/* Titel */}
-        <text x="50" y="8" textAnchor="middle" style={{ fontSize: '4px', fontWeight: 600, fill: KLEUREN.tekstSub }}>
-          Fysiotherapie praktijken
-        </text>
-      </svg>
-      
-      {/* Legenda */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center',
-        gap: '20px',
-        marginTop: '12px', 
-        padding: '10px 16px',
-        backgroundColor: KLEUREN.achtergrond,
-        borderRadius: '8px',
-        flexWrap: 'wrap'
-      }}>
-        {FYSIO_DATA.map(f => {
-          const aantal = fysioStats.perPraktijk.find(p => p.id === f.id)?.aantal || 0;
-          return (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ 
-                width: '14px', height: '14px', borderRadius: '50%', 
-                backgroundColor: f.kleur, 
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '8px'
-              }}>🏥</div>
-              <span style={{ fontSize: '12px', color: KLEUREN.tekst }}>{f.naam}</span>
-              <span style={{ 
-                fontSize: '11px', fontWeight: 600, 
-                color: f.kleur,
-                backgroundColor: `${f.kleur}15`,
-                padding: '2px 6px',
-                borderRadius: '4px'
-              }}>{aantal}</span>
-            </div>
-          );
-        })}
       </div>
     </div>
   );
