@@ -603,7 +603,7 @@ const FysioAanmeldingenPanel = ({ supabaseData, filters, wijk }) => {
     };
   }, [filteredRecords]);
   
-  const doelPercentage = 40;
+  const doelPercentage = 60;
   const voortgangNaarDoel = doelPercentage > 0 ? Math.min(100, Math.round((fysioStats.conversie / doelPercentage) * 100)) : 0;
   const nogTeBereiken = Math.max(0, Math.round(fysioStats.hoogRisico * (doelPercentage / 100)) - fysioStats.hoogRisicoMetFysio);
   
