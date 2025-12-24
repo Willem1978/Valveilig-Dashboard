@@ -2081,16 +2081,16 @@ export default function ValrisicoDashboard() {
                   <CardTitle>Kerninterpretatie</CardTitle>
                   <div style={{ fontSize: '13px', lineHeight: 1.7, color: KLEUREN.tekstSub }}>
                     <p style={{ margin: '0 0 12px 0' }}>
-                      <strong style={{ color: KLEUREN.tekst }}>42% is gevallen</strong> — van alle geteste 65-plussers. Dit bepaalt welke vervolgvragen worden gesteld.
+                      <strong style={{ color: KLEUREN.tekst }}>{risicofactorenData.find(r => r.id === 1)?.perc || 0}% is gevallen</strong> — van alle geteste 65-plussers. Dit bepaalt welke vervolgvragen worden gesteld.
                     </p>
                     <p style={{ margin: '0 0 12px 0' }}>
-                      <strong style={{ color: KLEUREN.tekst }}>67% viel meerdere keren</strong> — van de vallers. Recidive is een belangrijke risicofactor.
+                      <strong style={{ color: KLEUREN.tekst }}>{risicofactorenData.find(r => r.id === 5)?.perc || 0}% viel meerdere keren</strong> — van de vallers. Recidive is een belangrijke risicofactor.
                     </p>
                     <p style={{ margin: '0 0 12px 0' }}>
-                      <strong style={{ color: KLEUREN.tekst }}>38% heeft valangst</strong> — van de niet-vallers. Angst leidt tot vermijding en minder bewegen.
+                      <strong style={{ color: KLEUREN.tekst }}>{risicofactorenData.find(r => r.id === 2)?.perc || 0}% heeft valangst</strong> — van de niet-vallers. Angst leidt tot vermijding en minder bewegen.
                     </p>
                     <p style={{ margin: 0 }}>
-                      <strong style={{ color: KLEUREN.tekst }}>19% viel door flauwvallen</strong> — van de vallers. Dit vereist medisch onderzoek naar onderliggende oorzaken.
+                      <strong style={{ color: KLEUREN.tekst }}>{risicofactorenData.find(r => r.id === 6)?.perc || 0}% viel door flauwvallen</strong> — van de vallers. Dit vereist medisch onderzoek naar onderliggende oorzaken.
                     </p>
                   </div>
                 </Card>
