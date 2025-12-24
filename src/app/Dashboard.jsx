@@ -1249,44 +1249,15 @@ export default function ValrisicoDashboard() {
     
     const enkelGeslacht = filters.geslachten.length === 1 ? filters.geslachten[0] : null;
     const hoogRisicoAantal = stats.hoog;
-    const matigRisicoAantal = stats.matig;
     
-    // Bereken percentages dynamisch - p3 is beweging in de huidige structuur
-    const beweegPerc = preventieData.find(p => p.id === 3)?.perc || 0;
-    const woningPerc = preventieData.find(p => p.id === 6)?.perc || 0; // p6 is woonomgeving
-    const medicijnPerc = preventieData.find(p => p.id === 4)?.perc || 0;
+    // Bereken percentages dynamisch - p6 is woonomgeving
+    const woningPerc = preventieData.find(p => p.id === 6)?.perc || 0; // % dat woning heeft aangepast
     
     // Doelstellingen
-    const beweegDoel = 50;
     const woningDoel = 70;
     const fysioDoel = 60;
     
-    // Dynamische adviezen op basis van data - POSITIEF of NEGATIEF afhankelijk van doel
-    let beweegAdvies = '';
-    let beweegPositief = beweegPerc >= beweegDoel;
-    if (beweegPositief) {
-      beweegAdvies = `Uitstekend! ${beweegPerc}% beweegt regelmatig, boven het doel van ${beweegDoel}%. Houd dit vast door bestaande programma's te continueren.`;
-    } else if (dominanteLeeftijd === '85+') {
-      beweegAdvies = `Slechts ${beweegPerc}% doet regelmatig oefeningen (doel: ${beweegDoel}%). Focus op thuisoefeningen met begeleiding voor de kwetsbare 85+ groep.`;
-    } else if (dominanteLeeftijd === '75-84') {
-      beweegAdvies = `${beweegPerc}% oefent regelmatig (doel: ${beweegDoel}%). Groepscursussen "In Balans" zijn effectief voor deze leeftijdsgroep.`;
-    } else {
-      beweegAdvies = `${beweegPerc}% is actief (doel: ${beweegDoel}%). Stimuleer sport en beweegactiviteiten om risico's te voorkomen.`;
-    }
-    
-    let woningAdvies = '';
-    let woningPositief = woningPerc >= woningDoel;
-    const woningGap = 100 - woningPerc;
-    if (woningPositief) {
-      woningAdvies = `Goed bezig! ${woningPerc}% heeft een veilige woonomgeving, boven het doel van ${woningDoel}%. Focus op de resterende ${woningGap}% voor verdere verbetering.`;
-    } else if (woningGap > 60) {
-      woningAdvies = `${woningGap}% heeft geen aanpassingen (doel: max ${100-woningDoel}%) - grootschalige actie nodig via huisbezoeken en WMO-subsidies.`;
-    } else if (woningGap > 45) {
-      woningAdvies = `${woningGap}% mist woningaanpassingen (doel: max ${100-woningDoel}%). Gratis woningscans actief promoten bij deze doelgroep.`;
-    } else {
-      woningAdvies = `${woningGap}% kan nog profiteren van aanpassingen. Focus op resterende hoog-risico gevallen.`;
-    }
-    
+    // Fysio advies
     let fysioAdvies = '';
     if (enkelGeslacht === 'Man' || dominantGeslacht === 'Man') {
       fysioAdvies = `Mannen (${Math.round(manData.tests / totaal * 100)}% van selectie) zijn terughoudender. Benadruk praktische voordelen en resultaten.`;
@@ -1297,19 +1268,10 @@ export default function ValrisicoDashboard() {
     }
     
     return {
-      beweegprobleem: beweegPerc,
-      beweegAdvies,
-      beweegPositief,
-      beweegDoel,
-      woningprobleem: woningGap,
-      woningAdvies,
-      woningPositief,
+      woningPerc,
       woningDoel,
       fysioAdvies,
       fysioDoel,
-      medicijnPerc,
-      doelgroepAantal: hoogRisicoAantal,
-      matigAantal: matigRisicoAantal,
       prioriteitGroep: dominanteLeeftijd,
       geslachtFocus: enkelGeslacht || dominantGeslacht,
     };
@@ -1722,8 +1684,8 @@ export default function ValrisicoDashboard() {
       w.document.write('<tr><th>Indicator</th><th>Huidig</th><th>Doel</th></tr>');
       w.document.write('<tr><td>Percentage hoog risico</td><td>' + stats.pHoog + '%</td><td style="color:#15803D;font-weight:600">25%</td></tr>');
       w.document.write('<tr><td>Bereik valrisicotest</td><td>' + stats.bereik + '%</td><td style="color:#15803D;font-weight:600">20%</td></tr>');
-      w.document.write('<tr><td>Doorverwijzing fysio</td><td>~35%</td><td style="color:#15803D;font-weight:600">60%</td></tr>');
-      w.document.write('<tr><td>Woningscans per jaar</td><td>~80</td><td style="color:#15803D;font-weight:600">200</td></tr>');
+      w.document.write('<tr><td>Doorverwijzing fysio</td><td>' + stats.fysioConversie + '%</td><td style="color:#15803D;font-weight:600">60%</td></tr>');
+      w.document.write('<tr><td>Woningaanpassingen</td><td>' + (preventieData.find(p => p.id === 6)?.perc || 0) + '%</td><td style="color:#15803D;font-weight:600">70%</td></tr>');
       w.document.write('</table></div>');
       
       w.document.write('<div class="section"><div class="section-title"><span>📝</span> Vervolgstappen</div>');
@@ -2933,7 +2895,7 @@ export default function ValrisicoDashboard() {
               <br /><em style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>Aanbevelingen passen zich aan op basis van de geselecteerde filters ({stats.tests.toLocaleString()} tests, {stats.hoog.toLocaleString()} hoog risico).</em>
             </InfoPanel>
 
-            {/* Top 3 Prioriteiten - dynamisch gesorteerd */}
+            {/* Top 2 Prioriteiten - dynamisch gesorteerd */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
               {(() => {
                 // Bereken scores voor prioriteit (lager percentage = hogere prioriteit)
@@ -2941,8 +2903,8 @@ export default function ValrisicoDashboard() {
                 const fysioDoel = 60;
                 const fysioPositief = fysioConversie >= fysioDoel;
                 
-                // Woningaanpassingen: percentage dat woning heeft aangepast
-                const woningAangepast = 100 - aanbevelingenTeksten.woningprobleem;
+                // Woningaanpassingen: percentage dat woning heeft aangepast (direct uit preventieData)
+                const woningAangepast = aanbevelingenTeksten.woningPerc;
                 const woningDoel = 70;
                 const woningPositief = woningAangepast >= woningDoel;
                 
@@ -3227,26 +3189,6 @@ export default function ValrisicoDashboard() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
                 {[
                   { 
-                    label: 'Jaarlijkse oogcontrole', 
-                    huidig: 72, 
-                    doel: 70, 
-                    eenheid: '%',
-                    icon: '👁️',
-                    richting: 'omhoog',
-                    toelichting: 'Het percentage 65-plussers dat jaarlijks de ogen laat controleren. Dit doel is behaald! Blijvende aandacht nodig om dit niveau te behouden.',
-                    meetmethode: 'Percentage "ja" op aanvullende vraag 1 van de valrisicotest.'
-                  },
-                  { 
-                    label: 'Dagelijkse eiwitinname', 
-                    huidig: 68, 
-                    doel: 65, 
-                    eenheid: '%',
-                    icon: '🥛',
-                    richting: 'omhoog',
-                    toelichting: 'Het percentage 65-plussers dat dagelijks voldoende eiwitten eet voor spierbehoud. Doel behaald dankzij voorlichting via huisartsen en diëtisten.',
-                    meetmethode: 'Percentage "ja" op aanvullende vraag 5 van de valrisicotest.'
-                  },
-                  { 
                     label: 'Bereik valrisicotest verhogen', 
                     huidig: stats.bereik, 
                     doel: 20, 
@@ -3258,33 +3200,33 @@ export default function ValrisicoDashboard() {
                   },
                   { 
                     label: 'Doorverwijzing naar fysiotherapie', 
-                    huidig: 35, 
+                    huidig: stats.fysioConversie, 
                     doel: 60, 
                     eenheid: '%',
                     icon: '🏥',
                     richting: 'omhoog',
-                    toelichting: `Van de ${stats.hoog.toLocaleString()} personen met hoog risico is ~35% aangemeld. Doel is 60% (${Math.round(stats.hoog * 0.6).toLocaleString()} personen).`,
+                    toelichting: `Van de ${stats.hoog.toLocaleString()} personen met hoog risico is ${stats.fysioConversie}% aangemeld (${stats.fysioAanmeldingen} personen). Doel is 60%.`,
                     meetmethode: 'Berekend als: (fysio-aanmeldingen / totaal hoog risico) × 100%.'
                   },
                   { 
-                    label: 'Woningscans uitvoeren', 
-                    huidig: 80, 
-                    doel: 200, 
-                    eenheid: ' per jaar',
+                    label: 'Woningaanpassingen doorgevoerd', 
+                    huidig: preventieData.find(p => p.id === 6)?.perc || 0, 
+                    doel: 70, 
+                    eenheid: '%',
                     icon: '🏠',
                     richting: 'omhoog',
-                    toelichting: 'Jaarlijks 200 woningscans uitvoeren bij 65-plussers met verhoogd valrisico om valgevaar in de thuissituatie te verminderen.',
-                    meetmethode: 'Aantal uitgevoerde woningscans geregistreerd door WMO-loket en gecertificeerde aanbieders.'
+                    toelichting: `${preventieData.find(p => p.id === 6)?.perc || 0}% van de geteste 65-plussers heeft woningaanpassingen doorgevoerd. Doel is 70%.`,
+                    meetmethode: 'Percentage "ja" op preventievraag 6 van de valrisicotest (veilige woonomgeving).'
                   },
                   { 
-                    label: 'Deelname aan beweegprogramma', 
-                    huidig: 25, 
-                    doel: 50, 
+                    label: 'Jaarlijkse oogcontrole', 
+                    huidig: preventieData.find(p => p.id === 1)?.perc || 0, 
+                    doel: 70, 
                     eenheid: '%',
-                    icon: '🏃',
+                    icon: '👁️',
                     richting: 'omhoog',
-                    toelichting: `Minimaal 50% van de ${(stats.matig + stats.hoog).toLocaleString()} personen met matig/hoog risico neemt deel aan beweegprogramma.`,
-                    meetmethode: 'Deelnemersregistratie van erkende valpreventie-cursussen in de gemeente.'
+                    toelichting: `${preventieData.find(p => p.id === 1)?.perc || 0}% laat jaarlijks de ogen controleren. Doel is 70%.`,
+                    meetmethode: 'Percentage "ja" op preventievraag 1 van de valrisicotest.'
                   },
                 ].map((kpi, i) => {
                   const voortgang = kpi.richting === 'omlaag' 
