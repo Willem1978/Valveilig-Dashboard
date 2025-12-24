@@ -1032,6 +1032,25 @@ export default function ValrisicoDashboard() {
     const matig = gefilterdData.reduce((a, d) => a + d.matig, 0);
     const hoog = gefilterdData.reduce((a, d) => a + d.hoog, 0);
     
+    // Fysio aanmeldingen uit supabaseData (gefilterd op dezelfde criteria)
+    const filteredRecords = supabaseData.filter(r => {
+      const datum = new Date(r.created_at);
+      const jaar = datum.getFullYear();
+      const maand = datum.getMonth() + 1;
+      const leeftijd = LEEFTIJD_MAPPING[r.leeftijd] || r.leeftijd;
+      const geslacht = r.geslacht === 'man' ? 'Man' : r.geslacht === 'vrouw' ? 'Vrouw' : r.geslacht;
+      const kernId = WOONPLAATS_NAAR_KERN[r.woonplaats] || null;
+      const kern = kernId ? KERNEN.find(k => k.id === kernId) : null;
+      
+      return filters.jaren.includes(jaar) &&
+             filters.maanden.includes(maand) &&
+             filters.leeftijden.includes(leeftijd) &&
+             filters.geslachten.includes(geslacht) &&
+             (wijk === 'alle' || (kern && kern.wijk === wijk));
+    });
+    const fysioAanmeldingen = filteredRecords.filter(r => r.fysio_contact_aangevraagd === true).length;
+    const fysioConversie = hoog > 0 ? Math.round((fysioAanmeldingen / hoog) * 100) : 0;
+    
     // Bepaal welke kernen in de selectie zitten op basis van wijk filter
     const kernenInWijk = KERNEN.filter(k => wijk === 'alle' || k.wijk === wijk);
     const inw65plus = kernenInWijk.reduce((a, k) => a + k.inw65plus, 0);
@@ -1063,8 +1082,10 @@ export default function ValrisicoDashboard() {
       perKern,
       inw65plus,
       bereik,
+      fysioAanmeldingen,
+      fysioConversie,
     };
-  }, [gefilterdData, wijk]);
+  }, [gefilterdData, wijk, supabaseData, filters]);
 
   const trendData = useMemo(() => {
     return MAANDEN.filter(m => filters.maanden.includes(m.id)).map(m => {
@@ -1238,7 +1259,7 @@ export default function ValrisicoDashboard() {
     // Doelstellingen
     const beweegDoel = 50;
     const woningDoel = 70;
-    const fysioDoel = 40;
+    const fysioDoel = 60;
     
     // Dynamische adviezen op basis van data - POSITIEF of NEGATIEF afhankelijk van doel
     let beweegAdvies = '';
@@ -1700,7 +1721,7 @@ export default function ValrisicoDashboard() {
       w.document.write('<table>');
       w.document.write('<tr><th>Indicator</th><th>Huidig</th><th>Doel</th></tr>');
       w.document.write('<tr><td>Percentage hoog risico</td><td>' + stats.pHoog + '%</td><td style="color:#15803D;font-weight:600">25%</td></tr>');
-      w.document.write('<tr><td>Bereik valrisicotest</td><td>' + stats.bereik + '%</td><td style="color:#15803D;font-weight:600">40%</td></tr>');
+      w.document.write('<tr><td>Bereik valrisicotest</td><td>' + stats.bereik + '%</td><td style="color:#15803D;font-weight:600">20%</td></tr>');
       w.document.write('<tr><td>Doorverwijzing fysio</td><td>~35%</td><td style="color:#15803D;font-weight:600">60%</td></tr>');
       w.document.write('<tr><td>Woningscans per jaar</td><td>~80</td><td style="color:#15803D;font-weight:600">200</td></tr>');
       w.document.write('</table></div>');
@@ -2913,111 +2934,140 @@ export default function ValrisicoDashboard() {
               <br /><em style={{ fontSize: '12px', color: KLEUREN.tekstSub }}>Aanbevelingen passen zich aan op basis van de geselecteerde filters ({stats.tests.toLocaleString()} tests, {stats.hoog.toLocaleString()} hoog risico).</em>
             </InfoPanel>
 
-            {/* Top 3 Prioriteiten */}
+            {/* Top 3 Prioriteiten - dynamisch gesorteerd */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px' }}>
-              {[
-                { 
-                  titel: aanbevelingenTeksten.beweegPositief ? 'Beweegprogramma\'s ✓' : 'Beweegprogramma\'s opschalen', 
-                  icon: aanbevelingenTeksten.beweegPositief ? '✅' : '🏃', 
-                  prio: 1,
-                  positief: aanbevelingenTeksten.beweegPositief,
-                  probleem: aanbevelingenTeksten.beweegPositief 
-                    ? `${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers beweegt regelmatig - boven het doel van ${aanbevelingenTeksten.beweegDoel}%!`
-                    : `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet regelmatig balansoefeningen (doel: ${aanbevelingenTeksten.beweegDoel}%).`,
-                  onderbouwing: aanbevelingenTeksten.beweegAdvies,
-                  acties: aanbevelingenTeksten.beweegPositief
-                    ? [
-                        'Continueer huidige beweegprogramma\'s',
-                        'Deel succesverhalen met andere gemeenten',
-                        'Monitor langetermijn resultaten',
-                        'Versterk samenwerking met sportverenigingen'
-                      ]
-                    : aanbevelingenTeksten.prioriteitGroep === '85+'
-                    ? [
-                        'Thuisoefenprogramma met begeleiding aan huis',
-                        'Persoonlijke valpreventiecoach voor 85-plussers',
-                        'Samenwerking met wijkverpleging',
-                        'Eenvoudige oefeningen met stoel en handgreep'
-                      ]
-                    : [
-                        'Uitbreiden cursusaanbod "In Balans" en "Vallen Verleden Tijd"',
-                        'Thuisoefenprogramma met instructievideo\'s voor minder mobielen',
-                        'Beweegtuinen in kernen met hoog risico',
-                        'Samenwerking met lokale sportverenigingen'
-                      ],
-                  kpi: aanbevelingenTeksten.beweegPositief 
-                    ? `Behaald: ${aanbevelingenTeksten.beweegprobleem}% beweegt regelmatig (doel was ${aanbevelingenTeksten.beweegDoel}%)`
-                    : `Doel: ${aanbevelingenTeksten.beweegDoel}% van de geteste personen beweegt regelmatig`,
-                  verantwoordelijk: 'GGD / Welzijnsorganisatie / Fysiotherapeuten'
-                },
-                { 
-                  titel: aanbevelingenTeksten.woningPositief ? 'Woningveiligheid ✓' : 'Woningaanpassingen stimuleren', 
-                  icon: aanbevelingenTeksten.woningPositief ? '✅' : '🏠', 
-                  prio: 2,
-                  positief: aanbevelingenTeksten.woningPositief,
-                  probleem: aanbevelingenTeksten.woningPositief
-                    ? `${100 - aanbevelingenTeksten.woningprobleem}% heeft een veilige woonomgeving - boven het doel van ${aanbevelingenTeksten.woningDoel}%!`
-                    : `${aanbevelingenTeksten.woningprobleem}% heeft nog geen veilige woonomgeving (doel: max ${100 - aanbevelingenTeksten.woningDoel}%).`,
-                  onderbouwing: aanbevelingenTeksten.woningAdvies,
-                  acties: aanbevelingenTeksten.woningPositief
-                    ? [
-                        'Blijf woningscans actief aanbieden',
-                        'Focus op de resterende risicogroep',
-                        'Evalueer effectiviteit van aanpassingen',
-                        'Deel best practices met andere gemeenten'
-                      ]
-                    : aanbevelingenTeksten.prioriteitGroep === '85+'
-                    ? [
-                        'Proactieve huisbezoeken door wijkverpleging',
-                        'Woningscan aan huis met directe begeleiding',
-                        'Subsidieregeling voor aanpassingen via WMO',
-                        'Directe levering en installatie van hulpmiddelen'
-                      ]
-                    : [
-                        'Gratis woningscans aanbieden aan hoog-risico groep',
-                        'Huisbezoeken voor 85+ en minder mobielen',
-                        'Informatiebijeenkomsten over woningaanpassingen per kern',
-                        'Subsidieregeling voor kleine aanpassingen via WMO'
-                      ],
-                  kpi: aanbevelingenTeksten.woningPositief
-                    ? `Behaald: ${100 - aanbevelingenTeksten.woningprobleem}% veilige woonomgeving (doel was ${aanbevelingenTeksten.woningDoel}%)`
-                    : `Doel: ${aanbevelingenTeksten.woningDoel}% heeft veilige woonomgeving`,
-                  verantwoordelijk: 'Gemeente WMO / Woningcorporaties / Thuiszorg'
-                },
-                { 
-                  titel: 'Doorverwijzing naar fysiotherapie', 
-                  icon: '🩺', 
-                  prio: 3,
-                  positief: false, 
-                  icon: '🩺', 
-                  prio: 3,
-                  probleem: `Van de ${stats.hoog.toLocaleString()} personen met hoog valrisico in deze selectie is het aanmeldingspercentage bij fysiotherapie nog onvoldoende.`,
-                  onderbouwing: aanbevelingenTeksten.fysioAdvies,
-                  acties: aanbevelingenTeksten.geslachtFocus === 'Man'
-                    ? [
-                        'Praktische, resultaatgerichte communicatie',
-                        'Mannelijke ambassadeurs en ervaringsverhalen',
-                        'Koppeling met sport- en hobbyverenigingen',
-                        'Huisarts benadruk praktische voordelen'
-                      ]
-                    : aanbevelingenTeksten.geslachtFocus === 'Vrouw'
-                    ? [
-                        'Aandacht voor valangst en zelfvertrouwen',
-                        'Groepscursussen met sociale component',
-                        'Botdichtheidsscreening combineren',
-                        'Mantelzorgers actief betrekken'
-                      ]
-                    : [
-                        'Directe koppeling testuitslag met huisarts voor doorverwijzing',
-                        'Afspraken met fysiotherapiepraktijken over capaciteit valpreventie',
-                        'Informatiebrief naar hoog-risico met concrete vervolgstappen',
-                        'Terugkoppeling naar huisarts bij niet-aanmelding na 4 weken'
-                      ],
-                  kpi: `Doel: 60% van de ${stats.hoog.toLocaleString()} hoog-risico personen meldt zich aan bij fysiotherapeut`,
-                  verantwoordelijk: 'Huisartsen / Fysiotherapeuten / POH'
-                },
-              ].map((item, i) => (
-                <Card key={i} highlight={!item.positief && i === 0}>
+              {(() => {
+                // Bereken scores voor prioriteit (lager percentage = hogere prioriteit)
+                const fysioConversie = stats.fysioConversie || 0;
+                const fysioDoel = 60;
+                const fysioPositief = fysioConversie >= fysioDoel;
+                
+                const aanbevelingen = [
+                  { 
+                    id: 'beweging',
+                    titel: aanbevelingenTeksten.beweegPositief ? 'Beweegprogramma\'s ✓' : 'Beweegprogramma\'s opschalen', 
+                    icon: aanbevelingenTeksten.beweegPositief ? '✅' : '🏃', 
+                    positief: aanbevelingenTeksten.beweegPositief,
+                    score: aanbevelingenTeksten.beweegPositief ? 100 : aanbevelingenTeksten.beweegprobleem, // Lager = urgenter
+                    probleem: aanbevelingenTeksten.beweegPositief 
+                      ? `${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers beweegt regelmatig - boven het doel van ${aanbevelingenTeksten.beweegDoel}%!`
+                      : `Slechts ${aanbevelingenTeksten.beweegprobleem}% van de ${stats.tests.toLocaleString()} geteste 65-plussers doet regelmatig balansoefeningen (doel: ${aanbevelingenTeksten.beweegDoel}%).`,
+                    onderbouwing: aanbevelingenTeksten.beweegAdvies,
+                    acties: aanbevelingenTeksten.beweegPositief
+                      ? [
+                          'Continueer huidige beweegprogramma\'s',
+                          'Deel succesverhalen met andere gemeenten',
+                          'Monitor langetermijn resultaten',
+                          'Versterk samenwerking met sportverenigingen'
+                        ]
+                      : aanbevelingenTeksten.prioriteitGroep === '85+'
+                      ? [
+                          'Thuisoefenprogramma met begeleiding aan huis',
+                          'Persoonlijke valpreventiecoach voor 85-plussers',
+                          'Samenwerking met wijkverpleging',
+                          'Eenvoudige oefeningen met stoel en handgreep'
+                        ]
+                      : [
+                          'Uitbreiden cursusaanbod "In Balans" en "Vallen Verleden Tijd"',
+                          'Thuisoefenprogramma met instructievideo\'s voor minder mobielen',
+                          'Beweegtuinen in kernen met hoog risico',
+                          'Samenwerking met lokale sportverenigingen'
+                        ],
+                    kpi: aanbevelingenTeksten.beweegPositief 
+                      ? `Behaald: ${aanbevelingenTeksten.beweegprobleem}% beweegt regelmatig (doel was ${aanbevelingenTeksten.beweegDoel}%)`
+                      : `Doel: ${aanbevelingenTeksten.beweegDoel}% van de geteste personen beweegt regelmatig`,
+                    verantwoordelijk: 'GGD / Welzijnsorganisatie / Fysiotherapeuten'
+                  },
+                  { 
+                    id: 'woning',
+                    titel: aanbevelingenTeksten.woningPositief ? 'Woningveiligheid ✓' : 'Woningaanpassingen stimuleren', 
+                    icon: aanbevelingenTeksten.woningPositief ? '✅' : '🏠', 
+                    positief: aanbevelingenTeksten.woningPositief,
+                    score: aanbevelingenTeksten.woningPositief ? 100 : (100 - aanbevelingenTeksten.woningprobleem), // Lager = urgenter
+                    probleem: aanbevelingenTeksten.woningPositief
+                      ? `${100 - aanbevelingenTeksten.woningprobleem}% heeft een veilige woonomgeving - boven het doel van ${aanbevelingenTeksten.woningDoel}%!`
+                      : `${aanbevelingenTeksten.woningprobleem}% heeft nog geen veilige woonomgeving (doel: max ${100 - aanbevelingenTeksten.woningDoel}%).`,
+                    onderbouwing: aanbevelingenTeksten.woningAdvies,
+                    acties: aanbevelingenTeksten.woningPositief
+                      ? [
+                          'Blijf woningscans actief aanbieden',
+                          'Focus op de resterende risicogroep',
+                          'Evalueer effectiviteit van aanpassingen',
+                          'Deel best practices met andere gemeenten'
+                        ]
+                      : aanbevelingenTeksten.prioriteitGroep === '85+'
+                      ? [
+                          'Proactieve huisbezoeken door wijkverpleging',
+                          'Woningscan aan huis met directe begeleiding',
+                          'Subsidieregeling voor aanpassingen via WMO',
+                          'Directe levering en installatie van hulpmiddelen'
+                        ]
+                      : [
+                          'Gratis woningscans aanbieden aan hoog-risico groep',
+                          'Huisbezoeken voor 85+ en minder mobielen',
+                          'Informatiebijeenkomsten over woningaanpassingen per kern',
+                          'Subsidieregeling voor kleine aanpassingen via WMO'
+                        ],
+                    kpi: aanbevelingenTeksten.woningPositief
+                      ? `Behaald: ${100 - aanbevelingenTeksten.woningprobleem}% veilige woonomgeving (doel was ${aanbevelingenTeksten.woningDoel}%)`
+                      : `Doel: ${aanbevelingenTeksten.woningDoel}% heeft veilige woonomgeving`,
+                    verantwoordelijk: 'Gemeente WMO / Woningcorporaties / Thuiszorg'
+                  },
+                  { 
+                    id: 'fysio',
+                    titel: fysioPositief ? 'Fysiotherapie doorverwijzing ✓' : 'Doorverwijzing naar fysiotherapie', 
+                    icon: fysioPositief ? '✅' : '🩺', 
+                    positief: fysioPositief,
+                    score: fysioPositief ? 100 : fysioConversie, // Lager = urgenter
+                    probleem: fysioPositief
+                      ? `${fysioConversie}% van de hoog-risico personen is doorverwezen naar fysiotherapie - boven het doel van ${fysioDoel}%!`
+                      : `Slechts ${fysioConversie}% van de ${stats.hoog.toLocaleString()} hoog-risico personen is aangemeld bij fysiotherapie (doel: ${fysioDoel}%).`,
+                    onderbouwing: fysioPositief 
+                      ? `De doorverwijzing naar fysiotherapie loopt goed. ${stats.fysioAanmeldingen} personen zijn aangemeld.`
+                      : aanbevelingenTeksten.fysioAdvies,
+                    acties: fysioPositief
+                      ? [
+                          'Behoud huidige doorverwijsroutes',
+                          'Monitor kwaliteit van behandelingen',
+                          'Evalueer uitval tijdens behandeltraject',
+                          'Deel succesfactoren met andere regio\'s'
+                        ]
+                      : aanbevelingenTeksten.geslachtFocus === 'Man'
+                      ? [
+                          'Praktische, resultaatgerichte communicatie',
+                          'Mannelijke ambassadeurs en ervaringsverhalen',
+                          'Koppeling met sport- en hobbyverenigingen',
+                          'Huisarts benadruk praktische voordelen'
+                        ]
+                      : aanbevelingenTeksten.geslachtFocus === 'Vrouw'
+                      ? [
+                          'Aandacht voor valangst en zelfvertrouwen',
+                          'Groepscursussen met sociale component',
+                          'Botdichtheidsscreening combineren',
+                          'Mantelzorgers actief betrekken'
+                        ]
+                      : [
+                          'Directe koppeling testuitslag met huisarts voor doorverwijzing',
+                          'Afspraken met fysiotherapiepraktijken over capaciteit valpreventie',
+                          'Informatiebrief naar hoog-risico met concrete vervolgstappen',
+                          'Terugkoppeling naar huisarts bij niet-aanmelding na 4 weken'
+                        ],
+                    kpi: fysioPositief
+                      ? `Behaald: ${fysioConversie}% doorverwezen (doel was ${fysioDoel}%)`
+                      : `Doel: ${fysioDoel}% van de hoog-risico personen wordt doorverwezen`,
+                    verantwoordelijk: 'Huisartsen / Fysiotherapeuten / POH'
+                  },
+                ];
+                
+                // Sorteer: niet-positieve items eerst (op score, laagste eerst), dan positieve items
+                const gesorteerd = [...aanbevelingen].sort((a, b) => {
+                  if (a.positief && !b.positief) return 1;
+                  if (!a.positief && b.positief) return -1;
+                  return a.score - b.score; // Lager score = hogere prioriteit
+                });
+                
+                return gesorteerd.map((item, i) => (
+                <Card key={item.id} highlight={!item.positief && i === 0}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', marginBottom: '16px' }}>
                     <div style={{ 
                       width: '48px', height: '48px', borderRadius: '12px',
@@ -3034,7 +3084,7 @@ export default function ValrisicoDashboard() {
                           width: '22px', height: '22px', borderRadius: '50%', 
                           backgroundColor: item.positief ? KLEUREN.laag : KLEUREN.primair, color: KLEUREN.wit,
                           fontSize: '12px', fontWeight: 700
-                        }}>{item.positief ? '✓' : item.prio}</span>
+                        }}>{item.positief ? '✓' : i + 1}</span>
                         <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: item.positief ? KLEUREN.laag : KLEUREN.tekst }}>{item.titel}</h3>
                       </div>
                       <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.tekstSub }}>
@@ -3074,7 +3124,8 @@ export default function ValrisicoDashboard() {
                     <p style={{ margin: 0, fontSize: '12px', color: KLEUREN.laag, fontWeight: 500 }}>{item.kpi}</p>
                   </div>
                 </Card>
-              ))}
+              ));
+              })()}
             </div>
 
             {/* Doelgroepgerichte aanpak */}
@@ -3193,8 +3244,8 @@ export default function ValrisicoDashboard() {
                     <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Percentage hoog risico</p>
                   </div>
                   <div style={{ padding: '16px', backgroundColor: KLEUREN.wit, borderRadius: '8px', textAlign: 'center' }}>
-                    <p style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: KLEUREN.laag }}>{Math.round(stats.hoog * 0.35).toLocaleString()}</p>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Aangemeld bij fysio (~35%)</p>
+                    <p style={{ margin: 0, fontSize: '28px', fontWeight: 700, color: KLEUREN.laag }}>{stats.fysioAanmeldingen.toLocaleString()}</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: KLEUREN.tekstSub }}>Aangemeld bij fysio ({stats.fysioConversie}%)</p>
                   </div>
                 </div>
               </div>
@@ -3227,11 +3278,11 @@ export default function ValrisicoDashboard() {
                   { 
                     label: 'Bereik valrisicotest verhogen', 
                     huidig: stats.bereik, 
-                    doel: 40, 
+                    doel: 20, 
                     eenheid: '%',
                     icon: '📈',
                     richting: 'omhoog',
-                    toelichting: `Momenteel heeft ${stats.bereik}% van de ${stats.inw65plus.toLocaleString()} inwoners 65+ de test gedaan. Doel is 40% bereik.`,
+                    toelichting: `Momenteel heeft ${stats.bereik}% van de ${stats.inw65plus.toLocaleString()} inwoners 65+ de test gedaan. Doel is 20% bereik.`,
                     meetmethode: 'Berekend als: (aantal afgenomen tests / totaal 65+ inwoners) × 100%.'
                   },
                   { 
